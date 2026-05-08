@@ -1,0 +1,21 @@
+{
+  "accounts": [
+    {
+      "id": "main",
+      "username": "your_sportybet_email_or_phone",
+      "password": "USE_ENV_OR_SECRET_VAULT_IN_PRODUCTION",
+      "startingBalance": 0,
+      "stakeRanges": [
+        { "min": 100, "max": 500 },
+        { "min": 1000, "max": 2000 }
+      ],
+      "filters": {
+        "allowedSports": ["basketball", "tennis"],
+        "scenarios": ["total", "spread"],
+        "direction": "both",
+        "minEvPercent": 4
+      },
+      "enabled": true
+    }
+  ]
+}

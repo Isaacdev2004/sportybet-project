@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+logs/
+data/accounts.json
+data/sessions/
+data/screenshots/
+data/execution_ledger.jsonl
+*.log
+.DS_Store

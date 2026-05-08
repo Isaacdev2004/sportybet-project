@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Execution · dashboard</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0f14;
+        --panel: #121822;
+        --text: #e8edf4;
+        --muted: #8b98a8;
+        --accent: #4cc38a;
+        --border: #223042;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 1rem;
+      }
+      h1 {
+        font-size: 1.1rem;
+        margin: 0;
+        font-weight: 600;
+      }
+      main {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        padding: 1rem 1.5rem 2rem;
+      }
+      @media (max-width: 1000px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1rem;
+        min-height: 160px;
+      }
+      h2 {
+        margin: 0 0 0.75rem;
+        font-size: 0.95rem;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      pre {
+        margin: 0;
+        font-size: 0.75rem;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #d1dae6;
+        max-height: 55vh;
+        overflow: auto;
+      }
+      footer {
+        padding: 0 1.5rem 1.5rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+      a {
+        color: #7ab8ff;
+      }
+      button {
+        background: #1a2535;
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+      }
+      button:hover {
+        border-color: #3a4d6a;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+      .ok {
+        color: var(--accent);
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Automated execution</h1>
+      <div class="row">
+        <span id="execState" class="ok">—</span>
+        <button type="button" id="reloadAcc">Reload accounts</button>
+        <a href="/">← Signals</a>
+      </div>
+    </header>
+    <main>
+      <section>
+        <h2>Runtime settings + env snapshot</h2>
+        <pre id="settings">loading…</pre>
+      </section>
+      <section>
+        <h2>Accounts (passwords redacted)</h2>
+        <pre id="accounts">loading…</pre>
+      </section>
+      <section style="grid-column: 1 / -1">
+        <h2>Recent execution logs</h2>
+        <pre id="logs">loading…</pre>
+      </section>
+    </main>
+    <footer>
+      APIs:
+      <a href="/api/execution/settings">/api/execution/settings</a> ·
+      <a href="/api/execution/accounts">/api/execution/accounts</a> ·
+      <a href="/api/execution/logs">/api/execution/logs</a> ·
+      <a href="/api/execution/ledger?limit=100">/api/execution/ledger</a>
+      <br />
+      Log rows include <code>outcome</code> (placed, dedup_skipped, failed, …). <code>globalPass</code> is true
+      only when at least one stake row has <code>status: "success"</code>.
+      Timing (ms from <code>signalReceivedAtMs</code>): <code>dropToExecutionStartMs</code> (pipeline delay),
+      <code>dropToFirstPlacementMs</code> / <code>dropToLastPlacementMs</code> when a bet is placed.
+    </footer>
+    <script>
+      const FILE_PROTOCOL_HELP =
+        'This page talks to the API on the same origin. Do not open this file from disk (file://).\n\n' +
+        'Run the app (npm run dev), then open:\n' +
+        'http://localhost:3000/execution.html\n' +
+        '(use your PORT from .env if not 3000.)';
+
+      const FETCH_TIMEOUT_MS = 15000;
+
+      async function fetchJson(path) {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+        try {
+          const r = await fetch(path, { signal: ctrl.signal });
+          if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + path);
+          return await r.json();
+        } finally {
+          clearTimeout(t);
+        }
+      }
+
+      async function loadSettings() {
+        const j = await fetchJson('/api/execution/settings');
+        document.getElementById('settings').textContent = JSON.stringify(
+          j,
+          null,
+          2,
+        );
+        const on = j.env && j.env.enabled;
+        const st = document.getElementById('execState');
+        st.textContent = on ? 'EXECUTION_ENABLED=true' : 'EXECUTION_ENABLED=false';
+        st.className = on ? 'ok' : '';
+      }
+
+      async function loadAccounts() {
+        const j = await fetchJson('/api/execution/accounts');
+        document.getElementById('accounts').textContent = JSON.stringify(
+          j,
+          null,
+          2,
+        );
+      }
+
+      async function loadLogs() {
+        const j = await fetchJson('/api/execution/logs');
+        document.getElementById('logs').textContent = JSON.stringify(
+          j,
+          null,
+          2,
+        );
+      }
+
+      document.getElementById('reloadAcc').addEventListener('click', async () => {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+        try {
+          await fetch('/api/execution/accounts/reload', {
+            method: 'POST',
+            signal: ctrl.signal,
+          });
+          await loadAccounts();
+        } finally {
+          clearTimeout(t);
+        }
+      });
+
+      async function tick() {
+        if (location.protocol === 'file:') {
+          document.getElementById('settings').textContent = FILE_PROTOCOL_HELP;
+          document.getElementById('accounts').textContent = FILE_PROTOCOL_HELP;
+          document.getElementById('logs').textContent = FILE_PROTOCOL_HELP;
+          return;
+        }
+        try {
+          await Promise.all([loadSettings(), loadAccounts(), loadLogs()]);
+        } catch (e) {
+          const base =
+            e && e.name === 'AbortError'
+              ? 'Request timed out after ' +
+                FETCH_TIMEOUT_MS / 1000 +
+                's — is the app running? Check http://localhost:PORT/health'
+              : e && e.message
+                ? e.message
+                : String(e);
+          const err =
+            'API error: ' +
+            base +
+            '\n\nIf the app is up, this can also be a browser/network issue. Open /health in another tab.';
+          document.getElementById('settings').textContent = err;
+          document.getElementById('accounts').textContent = err;
+          document.getElementById('logs').textContent = err;
+        }
+      }
+      tick();
+      setInterval(tick, 4000);
+    </script>
+  </body>
+</html>
