@@ -89,12 +89,13 @@ async function postTelegramSendMessage(
   throw new Error(`telegram_${lastStatus}: ${lastBody.slice(0, 240)}`);
 }
 
-export async function sendTelegramPlain(text: string): Promise<void> {
+/** @returns true if the message was queued and sent successfully */
+export async function sendTelegramPlain(text: string): Promise<boolean> {
   const token = env.telegram.botToken.trim();
   const chat = env.telegram.chatId.trim();
   if (!token || !chat) {
     logger.warn('[telegram] TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing — skipping send');
-    return;
+    return false;
   }
 
   const gap = env.telegram.minGapMs;
@@ -117,7 +118,7 @@ export async function sendTelegramPlain(text: string): Promise<void> {
       maxQueueMs,
       gapMs: gap,
     });
-    return;
+    return false;
   }
   telegramQueueTailMs = projectedEnd;
 
@@ -131,6 +132,7 @@ export async function sendTelegramPlain(text: string): Promise<void> {
   });
 
   await exec;
+  return true;
 }
 
 export async function sendBettingAlert(opportunity: BettingOpportunity): Promise<void> {
@@ -152,8 +154,10 @@ export async function sendBettingAlert(opportunity: BettingOpportunity): Promise
 
   const body = formatTelegramMessage(opportunity);
   try {
-    await sendTelegramPlain(body);
-    logger.info('[telegram] alert sent', { ev: opportunity.evPercent });
+    const sent = await sendTelegramPlain(body);
+    if (sent) {
+      logger.info('[telegram] alert sent', { ev: opportunity.evPercent });
+    }
   } catch (e) {
     logger.error('[telegram] send failed', {
       err: e instanceof Error ? e.message : String(e),
