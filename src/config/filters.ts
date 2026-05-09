@@ -105,7 +105,7 @@ export interface FilterConfig {
 export function loadFilters(): FilterConfig {
   const minEv = Number(process.env.FILTER_MIN_EV_PERCENT ?? '4');
   const minDrop = Number(process.env.FILTER_MIN_DROP_PERCENT ?? '0');
-  const maxAge = Number(process.env.FILTER_SIGNAL_MAX_AGE_MS ?? '60000');
+  const maxAge = Number(process.env.FILTER_SIGNAL_MAX_AGE_MS ?? '15000');
 
   const excluded = new Set(
     parseList(process.env.FILTER_EXCLUDED_LEAGUES ?? '').map((s) =>

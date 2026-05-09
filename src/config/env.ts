@@ -14,6 +14,10 @@ function envBool(v: string | undefined): boolean {
 
 const DEFAULT_PINNODDS_BASE = 'https://pinnodds.com';
 
+function ms(v: string | undefined, fallback: number): number {
+  return Math.max(0, num(v, fallback));
+}
+
 /**
  * Centralized environment loading. All secrets come from process.env only.
  */
@@ -54,12 +58,17 @@ export const env = {
     botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
     chatId: process.env.TELEGRAM_CHAT_ID ?? '',
     /** Space out sendMessage when many alerts fire at once (limits burst + API). */
-    minGapMs: Math.max(0, num(process.env.TELEGRAM_MIN_GAP_MS, 300)),
+    minGapMs: ms(process.env.TELEGRAM_MIN_GAP_MS, 300),
+    /**
+     * Prevent “minutes late” alert bursts: if Telegram send queue is already behind by more than this, drop new alerts.
+     * 0 = disable (always queue).
+     */
+    maxQueueMs: ms(process.env.TELEGRAM_MAX_QUEUE_MS, 15_000),
     /**
      * Suppress repeat alerts with the same game/market fingerprint within this window (ms).
      * 0 = disable. Helps when SSE fires many correlated drops; mock SportyBet also exaggerates repeated edge.
      */
-    dedupeWindowMs: Math.max(0, num(process.env.TELEGRAM_ALERT_DEDUPE_MS, 90_000)),
+    dedupeWindowMs: ms(process.env.TELEGRAM_ALERT_DEDUPE_MS, 90_000),
   },
   http: {
     maxRetries: num(process.env.HTTP_MAX_RETRIES, 3),
