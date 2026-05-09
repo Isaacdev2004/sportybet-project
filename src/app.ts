@@ -43,6 +43,7 @@ logger.info('[boot] pinnodds pricing', {
 logger.info('[boot] telegram', {
   alertDedupeMs: env.telegram.dedupeWindowMs,
   minGapMs: env.telegram.minGapMs,
+  maxQueueMs: env.telegram.maxQueueMs,
 });
 
 function gracefulShutdown(signal: string): void {
