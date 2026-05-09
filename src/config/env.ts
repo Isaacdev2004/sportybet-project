@@ -61,9 +61,9 @@ export const env = {
     minGapMs: ms(process.env.TELEGRAM_MIN_GAP_MS, 300),
     /**
      * Prevent “minutes late” alert bursts: if Telegram send queue is already behind by more than this, drop new alerts.
-     * 0 = disable (always queue).
+     * 0 = disable (always queue). Default 60s survives 429 retry_after (~120s) without dropping every marginal follow-up.
      */
-    maxQueueMs: ms(process.env.TELEGRAM_MAX_QUEUE_MS, 15_000),
+    maxQueueMs: ms(process.env.TELEGRAM_MAX_QUEUE_MS, 60_000),
     /**
      * Suppress repeat alerts with the same game/market fingerprint within this window (ms).
      * 0 = disable. Helps when SSE fires many correlated drops; mock SportyBet also exaggerates repeated edge.
