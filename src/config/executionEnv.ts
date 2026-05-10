@@ -22,7 +22,11 @@ function parseScenarioList(raw: string | undefined): string[] {
 
 export const executionEnv = {
   enabled: envBool(process.env.EXECUTION_ENABLED),
-  maxExecutionMs: Math.max(500, num(process.env.EXECUTION_MAX_MS, 2500)),
+  /**
+   * Wall-clock budget **after** acquiring the Playwright lock (nav + stake). Real SportyBet flows
+   * often need 25–45s; default 45s. Lower only if you accept more `execution_time_exceeded` aborts.
+   */
+  maxExecutionMs: Math.max(500, num(process.env.EXECUTION_MAX_MS, 45_000)),
   dedupTtlMs: Math.max(60_000, num(process.env.EXECUTION_DEDUP_TTL_MS, 30 * 60_000)),
   maxOddsDrift: Math.max(0, num(process.env.EXECUTION_MAX_ODDS_DRIFT, 0.05)),
   headless: process.env.EXECUTION_HEADLESS !== 'false',
@@ -65,7 +69,11 @@ export const executionEnv = {
    * Playwright `page.goto` timeout when opening SportyBet (ms). Raise on slow networks.
    * @see EXECUTION_PAGE_GOTO_TIMEOUT_MS
    */
-  pageGotoTimeoutMs: Math.max(5_000, num(process.env.EXECUTION_PAGE_GOTO_TIMEOUT_MS, 45_000)),
+  pageGotoTimeoutMs: Math.max(5_000, num(process.env.EXECUTION_PAGE_GOTO_TIMEOUT_MS, 32_000)),
+  /** After scroll-to-top on home, wait before re-checking sport link (ms). 0 = skip pause. */
+  navScrollSettleMs: Math.max(0, num(process.env.EXECUTION_NAV_SCROLL_SETTLE_MS, 100)),
+  /** After Place click, short pause before returning (ms). 0 = skip. */
+  placeBetSettleMs: Math.max(0, num(process.env.EXECUTION_PLACE_BET_SETTLE_MS, 40)),
   /**
    * After waiting in the per-account Playwright queue, skip if the signal is older than this (ms).
    * 0 = off. Prevents 10+ minute queue stalls from still opening the browser on stale drops.
@@ -76,7 +84,8 @@ export const executionEnv = {
    * 1 = legacy single queue; 4 = up to four executions at once for the same account.
    * @see EXECUTION_ACCOUNT_WORKERS
    */
-  accountWorkers: Math.max(1, Math.min(8, Math.floor(num(process.env.EXECUTION_ACCOUNT_WORKERS, 1)))),
+  /** Default 2: overlaps runs per account to cut queue wait when many signals fire. Set 1 if OOM/unstable. */
+  accountWorkers: Math.max(1, Math.min(8, Math.floor(num(process.env.EXECUTION_ACCOUNT_WORKERS, 2)))),
   /**
    * When false (default), live-flow nav will NOT `goto(home)` if the URL is already the home path
    * but the sport link was not found (prevents infinite full-page reload loops with SPAs / selectors).

@@ -68,7 +68,7 @@ async function maybeClickLiveTab(page: Page, budget: ExecutionBudget): Promise<v
     (await page.getByRole('link', { name: liveName, exact: true }).count()) > 0
       ? page.getByRole('link', { name: liveName, exact: true }).first()
       : page.getByRole('button', { name: new RegExp(`^${liveName}$`, 'i') }).first();
-  if (await live.isVisible({ timeout: 2500 }).catch(() => false)) {
+  if (await live.isVisible({ timeout: 2000 }).catch(() => false)) {
     await live.click({ timeout: Math.min(10_000, budget.remainingMs()) }).catch(() => {});
     await page.waitForLoadState('domcontentloaded', { timeout: 4000 }).catch(() => {});
   }
@@ -108,11 +108,13 @@ export async function goToLiveListPage(
     await preloadLiveMatchCache(page, sportLabel, budget, rowSel, waitList, maxRows);
     return true;
   }
-  let onHome = await isMainSportLinkVisible(page, sportLabel, 2400);
+  let onHome = await isMainSportLinkVisible(page, sportLabel, 2000);
   if (!onHome) {
     await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
-    await new Promise((r) => setTimeout(r, 500));
-    onHome = await isMainSportLinkVisible(page, sportLabel, 3000);
+    if (executionEnv.navScrollSettleMs > 0) {
+      await new Promise((r) => setTimeout(r, executionEnv.navScrollSettleMs));
+    }
+    onHome = await isMainSportLinkVisible(page, sportLabel, 2800);
   }
 
   if (!onHome) {
@@ -298,7 +300,9 @@ export async function placeBet(
       'button:has-text("Place Bet"), button:has-text("Book"), [class*="place-bet"]';
     const btn = await page.$(placeSel);
     if (btn) await btn.click({ timeout: budget.remainingMs() });
-    await new Promise((r) => setTimeout(r, 150));
+    if (executionEnv.placeBetSettleMs > 0) {
+      await new Promise((r) => setTimeout(r, executionEnv.placeBetSettleMs));
+    }
     return true;
   } catch {
     return false;

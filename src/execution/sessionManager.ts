@@ -98,7 +98,7 @@ export async function ensureLoggedInSportyBet(params: {
         await page.fill(LOGIN.username, account.username, { timeout: 8000 });
         await page.fill(LOGIN.password, account.password, { timeout: 8000 });
         await page.click(LOGIN.submit, { timeout: 8000 });
-        await page.waitForLoadState('networkidle', { timeout: 12_000 }).catch(() => {});
+        await page.waitForLoadState('networkidle', { timeout: 9000 }).catch(() => {});
       } catch (e) {
         logger.warn('[session] login flow failed (selectors may need tuning)', {
           accountId: account.id,

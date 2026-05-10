@@ -262,7 +262,7 @@ export async function preloadLiveMatchCache(
   budget.assertWithin();
   await page
     .waitForSelector(waitList, {
-      timeout: Math.min(8000, budget.remainingMs()),
+      timeout: Math.min(6500, budget.remainingMs()),
       state: 'visible',
     })
     .catch(() => {});
@@ -288,7 +288,7 @@ export async function findMatchRowCached(
 
   await page
     .waitForSelector(waitList, {
-      timeout: Math.min(8000, budget.remainingMs()),
+      timeout: Math.min(6500, budget.remainingMs()),
       state: 'visible',
     })
     .catch(() => {});
