@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Value engine · dashboard</title>
+    <title>Value engine · legacy view</title>
     <style>
       :root {
         color-scheme: dark;
@@ -89,7 +89,12 @@
   <body>
     <header>
       <h1>Value betting engine</h1>
-      <div id="status" class="pill">loading…</div>
+      <div style="display: flex; align-items: center; gap: 0.75rem">
+        <a href="/app/" style="font-size: 0.85rem">Open SportyBet dashboard (React) →</a>
+        ·
+        <a href="/dashboard.html" style="font-size: 0.85rem">Legacy HTML</a>
+        <div id="status" class="pill">loading…</div>
+      </div>
     </header>
     <main>
       <section>

@@ -29,7 +29,7 @@ function readAccountsFromDisk(): ExecutionAccount[] {
       logger.error('[accounts] invalid JSON shape');
       return [];
     }
-    cache = list.filter((a) => a.id && a.enabled !== false);
+    cache = list.filter((a) => a.id);
     lastMtimeMs = st.mtimeMs;
     return cache;
   } catch (e) {

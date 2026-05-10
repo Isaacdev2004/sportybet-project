@@ -17,6 +17,7 @@ Password:
   ____________________________________________________________________________
 
 Quick checks for your client:
+  • Main dashboard (React): append /app/ to the base URL, e.g. http://YOUR_HOST:3000/app/
   • Open the URL in Safari or Chrome; the browser should ask for username and password.
   • If the page times out, the server firewall must allow TCP port 3000 (host panel + UFW).
 

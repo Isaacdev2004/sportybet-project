@@ -85,9 +85,37 @@ export type ExecutionLogOutcome =
   | 'failed'
   | 'all_skipped';
 
+/** Serializable opportunity context for dashboard / ledger (no circular refs). */
+export interface ExecutionOpportunitySnapshot {
+  sport?: string;
+  league?: string;
+  home?: string;
+  away?: string;
+  market?: string;
+  periodName?: string;
+  period?: number;
+  line?: string | number;
+  designation?: string;
+  /** NVP as decimal odds used for EV. */
+  nvpDecimal: number;
+  /** Absolute % move on the alerted Pinnacle price, when computable. */
+  dropPercent?: number;
+  softOdds: number;
+  evPercent: number;
+  softBookLabel: string;
+  formattedMovement: string;
+  isLive?: boolean;
+  side: 'over' | 'under';
+}
+
 export interface BetExecutionResult {
   opportunityId: string;
   parentId?: string;
+  /**
+   * Present for rows created after this feature — used for Bets / Stats / Live feed columns.
+   * Older JSONL lines may omit it.
+   */
+  opportunity?: ExecutionOpportunitySnapshot;
   startedAtMs: number;
   finishedAtMs: number;
   totalLatencyMs: number;

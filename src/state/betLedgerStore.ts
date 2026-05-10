@@ -66,3 +66,12 @@ export function readLedgerNewest(limit: number, maxReadBytes = 2_500_000): BetEx
     fs.closeSync(fd);
   }
 }
+
+/** Stats / Bets page — larger tail window (still bounded). */
+export function readLedgerTailForDashboard(
+  limit: number,
+  maxReadBytes = 12_000_000,
+): BetExecutionResult[] {
+  const cap = Math.min(50_000, Math.max(1, Math.floor(limit)));
+  return readLedgerNewest(cap, maxReadBytes);
+}

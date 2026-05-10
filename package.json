@@ -4,10 +4,12 @@
   "description": "Real-time value betting engine: Pinnacle SSE → NVP/EV → SportyBet compare → Telegram",
   "main": "dist/app.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build:client",
+    "build:client": "npm --prefix client ci && npm --prefix client run build",
     "prestart": "npm run build",
     "start": "node dist/app.js",
     "dev": "tsx watch src/app.ts",
+    "dev:ui": "npm --prefix client run dev",
     "prove:login": "tsx src/scripts/proveSportyBetLogin.ts",
     "typecheck": "tsc --noEmit"
   },

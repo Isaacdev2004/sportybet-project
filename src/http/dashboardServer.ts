@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import express from 'express';
 import type { RequestHandler } from 'express';
@@ -15,6 +16,15 @@ import {
   getExecutionSettings,
 } from '../dashboard/settingsController.js';
 import { listAccounts, reloadAccounts } from '../dashboard/accountsController.js';
+import {
+  getDashboardBootstrap,
+  getDashboardBets,
+  getDashboardFeed,
+  getDashboardFiltersView,
+  getDashboardProxiesView,
+  getDashboardStats,
+  getDashboardStream,
+} from '../dashboard/dashboardController.js';
 
 function timingSafeEqualStr(a: string, b: string): boolean {
   const x = Buffer.from(a, 'utf8');
@@ -81,6 +91,18 @@ export function createDashboardApp(params: {
 
   app.use(express.static(publicDir));
 
+  /** Vite build output: `public/app/` — SPA fallback after `express.static` misses. */
+  const reactIndex = path.join(publicDir, 'app', 'index.html');
+  if (fs.existsSync(reactIndex)) {
+    app.use('/app', (req, res, next) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        next();
+        return;
+      }
+      res.sendFile(reactIndex);
+    });
+  }
+
   const apiLimiter = rateLimit({
     windowMs: 60_000,
     /** Dashboard + execution page poll multiple endpoints; shared limiter counts all /api/* using this instance */
@@ -116,6 +138,15 @@ export function createDashboardApp(params: {
   app.get('/api/execution/ledger', apiLimiter, getExecutionLedgerHandler);
   app.get('/api/execution/accounts', apiLimiter, listAccounts);
   app.post('/api/execution/accounts/reload', apiLimiter, reloadAccounts);
+
+  const dashDeps = { sse: params.sse, store: params.store, startedAtMs: params.startedAtMs };
+  app.get('/api/dashboard/bootstrap', apiLimiter, getDashboardBootstrap(dashDeps));
+  app.get('/api/dashboard/feed', apiLimiter, getDashboardFeed(dashDeps));
+  app.get('/api/dashboard/stats', apiLimiter, getDashboardStats());
+  app.get('/api/dashboard/bets', apiLimiter, getDashboardBets());
+  app.get('/api/dashboard/filters', apiLimiter, getDashboardFiltersView());
+  app.get('/api/dashboard/proxies', apiLimiter, getDashboardProxiesView());
+  app.get('/api/dashboard/stream', getDashboardStream(dashDeps));
 
   return app;
 }

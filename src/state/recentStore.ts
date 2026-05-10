@@ -26,6 +26,14 @@ export class RecentStore {
       opportunities: this.opps.slice(0, 30).map(sanitizeOpp),
     };
   }
+
+  /** Larger buffers for the SportyBet dashboard live merge. */
+  dashboardSnapshot() {
+    return {
+      signals: this.signals.slice(0, 120).map(sanitizeSignal),
+      opportunities: this.opps.slice(0, 80).map(sanitizeOpp),
+    };
+  }
 }
 
 function sanitizeSignal(s: OddsDropSignal) {
@@ -52,14 +60,22 @@ function sanitizeSignal(s: OddsDropSignal) {
 function sanitizeOpp(o: BettingOpportunity) {
   return {
     receivedAtMs: o.signal.receivedAtMs,
+    sport: o.signal.sport ?? o.pinnacle.sport,
     league: o.pinnacle.league ?? o.signal.league,
+    periodName: o.signal.periodName,
+    period: o.signal.period,
     game: `${o.pinnacle.home ?? '?'} vs ${o.pinnacle.away ?? '?'}`,
     market: o.pinnacle.market,
+    line: o.signal.line,
+    designation: o.signal.designation,
     softBookLabel: o.softBookLabel,
     evPercent: o.evPercent,
     nvpUsed: o.nvpUsed,
     softOdds: o.softOdds,
     side: o.side,
     formattedMovement: o.formattedMovement,
+    isLive: o.signal.isLive ?? o.pinnacle.isLive,
+    prevOdds: o.signal.prevOdds,
+    currentOdds: o.signal.currentOdds,
   };
 }

@@ -10,7 +10,9 @@ import type {
   BetExecutionResult,
   SingleBetResult,
   ExecutionLogOutcome,
+  ExecutionOpportunitySnapshot,
 } from './types.js';
+import { signalDropPercent } from '../core/decisionEngine.js';
 import { getAccounts } from '../account/accountManager.js';
 import { expandStakeRanges } from '../stake/stakeManager.js';
 import {
@@ -40,6 +42,28 @@ function pickAccountWorkerSlot(accountId: string, workerCount: number): number {
 
 function opportunityId(opp: BettingOpportunity): string {
   return `${opp.signal.parentId ?? 'x'}::${opp.evPercent.toFixed(2)}`;
+}
+
+function opportunitySnapshot(opp: BettingOpportunity): ExecutionOpportunitySnapshot {
+  return {
+    sport: opp.signal.sport ?? opp.pinnacle.sport,
+    league: opp.pinnacle.league ?? opp.signal.league,
+    home: opp.pinnacle.home ?? opp.signal.home,
+    away: opp.pinnacle.away ?? opp.signal.away,
+    market: opp.pinnacle.market ?? opp.signal.market,
+    periodName: opp.signal.periodName,
+    period: opp.signal.period,
+    line: opp.signal.line,
+    designation: opp.signal.designation,
+    nvpDecimal: opp.nvpUsed,
+    dropPercent: signalDropPercent(opp.signal),
+    softOdds: opp.softOdds,
+    evPercent: opp.evPercent,
+    softBookLabel: opp.softBookLabel,
+    formattedMovement: opp.formattedMovement,
+    isLive: opp.signal.isLive ?? opp.pinnacle.isLive,
+    side: opp.side,
+  };
 }
 
 function outcomeFromAccountRows(rows: SingleBetResult[]): ExecutionLogOutcome {
@@ -314,6 +338,7 @@ export async function executeBetsOnOpportunity(
     const result: BetExecutionResult = {
       opportunityId: oppId,
       parentId: opp.signal.parentId,
+      opportunity: opportunitySnapshot(opp),
       startedAtMs,
       finishedAtMs,
       totalLatencyMs: finishedAtMs - startedAtMs,
@@ -359,6 +384,7 @@ export async function executeBetsOnOpportunity(
     const result: BetExecutionResult = {
       opportunityId: oppId,
       parentId: opp.signal.parentId,
+      opportunity: opportunitySnapshot(opp),
       startedAtMs,
       finishedAtMs,
       totalLatencyMs: finishedAtMs - startedAtMs,
@@ -379,6 +405,7 @@ export async function executeBetsOnOpportunity(
     const result: BetExecutionResult = {
       opportunityId: oppId,
       parentId: opp.signal.parentId,
+      opportunity: opportunitySnapshot(opp),
       startedAtMs,
       finishedAtMs,
       totalLatencyMs: finishedAtMs - startedAtMs,
@@ -490,6 +517,7 @@ export async function executeBetsOnOpportunity(
   const result: BetExecutionResult = {
     opportunityId: oppId,
     parentId: opp.signal.parentId,
+    opportunity: opportunitySnapshot(opp),
     startedAtMs,
     finishedAtMs,
     totalLatencyMs: finishedAtMs - startedAtMs,
