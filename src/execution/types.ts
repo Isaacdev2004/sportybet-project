@@ -115,6 +115,15 @@ export interface BetExecutionResult {
   accountResults: SingleBetResult[];
   /** High-level result for this opportunity row. */
   outcome: ExecutionLogOutcome;
+  /**
+   * Diagnostics: max time any account waited for its Playwright worker lock (ms).
+   * Large values mean bets are queued behind other runs — raise EXECUTION_ACCOUNT_WORKERS.
+   */
+  maxQueueWaitMs?: number;
+  /**
+   * Max time spent in preflight (filters + SportyBet odds probe) before queueing for browser (ms).
+   */
+  maxPreflightMs?: number;
 }
 
 export interface QualifiedExecutionSignal {

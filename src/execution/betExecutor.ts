@@ -404,6 +404,8 @@ export async function executeBetsOnOpportunity(
   });
 
   let accountResults: SingleBetResult[] = [];
+  const queueWaitSamples: number[] = [];
+  const preflightSamples: number[] = [];
   try {
     const batches = await Promise.all(
       accounts.map((account) => {
@@ -417,9 +419,11 @@ export async function executeBetsOnOpportunity(
           });
           if (!pre.ok) return pre.rows;
           const queuedAtMs = Date.now();
+          preflightSamples.push(queuedAtMs - tStart);
           return runAccountWorkerExclusive(account.id, workerSlot, async () => {
             const mutexAcquiredMs = Date.now();
             const queueWaitMs = mutexAcquiredMs - queuedAtMs;
+            queueWaitSamples.push(queueWaitMs);
             if (queueWaitMs >= 5_000) {
               logger.info('[execution] queue wait before lock', {
                 oppId,
@@ -479,6 +483,10 @@ export async function executeBetsOnOpportunity(
 
   const finishedAtMs = Date.now();
   const outcome = outcomeFromAccountRows(accountResults);
+  const maxQueueWaitMs =
+    queueWaitSamples.length > 0 ? Math.max(...queueWaitSamples) : undefined;
+  const maxPreflightMs =
+    preflightSamples.length > 0 ? Math.max(...preflightSamples) : undefined;
   const result: BetExecutionResult = {
     opportunityId: oppId,
     parentId: opp.signal.parentId,
@@ -489,6 +497,8 @@ export async function executeBetsOnOpportunity(
     globalPass: globalPassFromOutcome(outcome),
     outcome,
     accountResults,
+    maxQueueWaitMs,
+    maxPreflightMs,
   };
   appendExecutionLog(result);
 

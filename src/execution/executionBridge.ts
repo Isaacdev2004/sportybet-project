@@ -22,6 +22,8 @@ export function enqueueAutomatedExecution(opportunity: BettingOpportunity): void
         dropToExecutionStartMs: r.dropToExecutionStartMs,
         dropToExecutionFinishedMs: r.dropToExecutionFinishedMs,
         dropToFirstPlacementMs: r.dropToFirstPlacementMs,
+        maxQueueWaitMs: r.maxQueueWaitMs,
+        maxPreflightMs: r.maxPreflightMs,
       });
     })
     .catch((e: unknown) => {
