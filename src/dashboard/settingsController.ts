@@ -25,6 +25,10 @@ export function getExecutionSettings(_req: Request, res: Response): void {
         liveHub: Boolean(executionEnv.deepLinkLiveUrl),
         tryLiveClickAfterDeepLink: executionEnv.deepLinkTryLiveClick,
       },
+      sportyBetLiveQuotes: executionEnv.sportyBetLiveQuotes,
+      sportyBetLiveQuoteFallback: executionEnv.sportyBetLiveQuoteFallback,
+      sportyBetLiveQuoteBudgetMs: executionEnv.sportyBetLiveQuoteBudgetMs,
+      sportyBetLiveQuoteWorkerSlot: executionEnv.sportyBetLiveQuoteWorkerSlot,
     },
   });
 }

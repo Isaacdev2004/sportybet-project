@@ -87,6 +87,33 @@ export const executionEnv = {
   /** Default 2: overlaps runs per account to cut queue wait when many signals fire. Set 1 if OOM/unstable. */
   accountWorkers: Math.max(1, Math.min(8, Math.floor(num(process.env.EXECUTION_ACCOUNT_WORKERS, 2)))),
   /**
+   * When true, soft quotes for EV / Telegram / dashboard use Playwright to read SportyBet’s UI odds
+   * (same nav path as execution). Probes run **one at a time** globally — slow under burst traffic.
+   * Requires at least one **enabled** account in accounts.json with a valid session (see `prove:login`).
+   * @see SPORTYBET_LIVE_QUOTES
+   */
+  sportyBetLiveQuotes: envBool(process.env.SPORTYBET_LIVE_QUOTES),
+  /**
+   * If a live probe fails (match not found, timeout, unreadable odds), fall back to synthetic mock.
+   * Set `false` to treat a failed probe as “no soft quote” (stricter).
+   * @see SPORTYBET_LIVE_QUOTE_FALLBACK
+   */
+  sportyBetLiveQuoteFallback: process.env.SPORTYBET_LIVE_QUOTE_FALLBACK !== 'false',
+  /**
+   * Max ms for one live quote probe (login + nav + read). Capped by `maxExecutionMs` as well.
+   */
+  sportyBetLiveQuoteBudgetMs: Math.max(
+    15_000,
+    Math.min(120_000, num(process.env.SPORTYBET_LIVE_QUOTE_BUDGET_MS, 55_000)),
+  ),
+  /**
+   * Dedicated Playwright worker slot for live-quote context (must not overlap 0..accountWorkers-1).
+   */
+  sportyBetLiveQuoteWorkerSlot: Math.max(
+    8,
+    Math.min(31, Math.floor(num(process.env.SPORTYBET_LIVE_QUOTE_WORKER_SLOT, 8))),
+  ),
+  /**
    * When false (default), live-flow nav will NOT `goto(home)` if the URL is already the home path
    * but the sport link was not found (prevents infinite full-page reload loops with SPAs / selectors).
    * Set true only if you rely on hard reload to refresh the shell.

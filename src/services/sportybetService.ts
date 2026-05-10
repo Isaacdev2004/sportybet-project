@@ -1,4 +1,6 @@
 import type { FullMarketQuote, OddsDropSignal } from '../types/index.js';
+import { executionEnv } from '../config/executionEnv.js';
+import { probeSportyBetDecimalOdds } from '../execution/sportybetLiveQuoteService.js';
 import { totalLinesEquivalent } from '../utils/helpers.js';
 import { logger } from '../utils/logger.js';
 
@@ -14,17 +16,14 @@ export interface SoftQuote {
 }
 
 /**
- * Phase 1: simulated SportyBet latency + pricing.
- * Replace internals with HTTP/scraper when wiring real odds.
+ * Resolves a SportyBet-side quote for EV: optional **live** UI scrape (`SPORTYBET_LIVE_QUOTES`)
+ * or synthetic mock (default / fallback).
  */
 export async function fetchSportyBetQuote(params: {
   signal: OddsDropSignal;
   pinnacle: FullMarketQuote;
 }): Promise<SoftQuote | undefined> {
   const { signal, pinnacle } = params;
-
-  // Async boundary — keeps call graph consistent with future I/O
-  await Promise.resolve();
 
   const lineSoft = signal.line ?? pinnacle.over.line ?? pinnacle.under.line;
   const pinLine = pinnacle.over.line ?? pinnacle.under.line;
@@ -73,12 +72,41 @@ export async function fetchSportyBetQuote(params: {
     base = useDropOddsAnchor ? signal.currentOdds! : pinnacle.over.odds;
   }
 
-  const softOdds = base * (1.03 + jitter);
+  const alignResolved: 'over' | 'under' = align ?? 'over';
+  const mockOdds = Math.round(base * (1.03 + jitter) * 1000) / 1000;
+
+  if (executionEnv.sportyBetLiveQuotes) {
+    const live = await probeSportyBetDecimalOdds({
+      signal,
+      side: alignResolved,
+    });
+    if (live != null) {
+      return {
+        book: 'SportyBet',
+        odds: live,
+        designation: alignResolved,
+        line: lineSoft,
+      };
+    }
+    if (!executionEnv.sportyBetLiveQuoteFallback) {
+      logger.info('[sportybet-live] strict mode — no fallback mock', {
+        parentId: signal.parentId,
+      });
+      return undefined;
+    }
+    logger.warn('[sportybet-live] using mock fallback', { parentId: signal.parentId });
+    return {
+      book: 'SportyBet (mock · live unreadable)',
+      odds: mockOdds,
+      designation: alignResolved,
+      line: lineSoft,
+    };
+  }
 
   return {
     book: 'SportyBet (mock)',
-    odds: Math.round(softOdds * 1000) / 1000,
-    designation: align,
+    odds: mockOdds,
+    designation: alignResolved,
     line: lineSoft,
   };
 }

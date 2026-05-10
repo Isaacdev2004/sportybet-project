@@ -359,3 +359,32 @@ export async function navigateDirectLiveFlow(params: {
     return { ok: false, skipReason: 'nav_error' };
   }
 }
+
+/**
+ * Navigate to the selection and read displayed decimal odds (no drift check vs expected).
+ * Used for `SPORTYBET_LIVE_QUOTES` pipeline quotes.
+ */
+export async function probeSportyBetLiveOddsFromNav(params: {
+  page: Page;
+  baseUrl: string;
+  key: SportyBetMarketKey;
+  side: 'over' | 'under';
+  budget: ExecutionBudget;
+}): Promise<number | undefined> {
+  const { page, baseUrl, key, side, budget } = params;
+  const out = await navigateDirectLiveFlow({
+    page,
+    baseUrl,
+    key,
+    side,
+    softOdds: 2,
+    maxOddsDrift: 50,
+    budget,
+    skipOnPageOddsCompare: true,
+  });
+  if (!out.ok) {
+    logger.info('[sportybet-live] nav incomplete', { reason: out.skipReason });
+    return undefined;
+  }
+  return readOddsFromPage(page, budget);
+}
