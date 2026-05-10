@@ -87,22 +87,6 @@ export function createDashboardApp(params: {
     app.use(basicAuth);
   }
 
-  const publicDir = path.join(process.cwd(), 'public');
-
-  app.use(express.static(publicDir));
-
-  /** Vite build output: `public/app/` — SPA fallback after `express.static` misses. */
-  const reactIndex = path.join(publicDir, 'app', 'index.html');
-  if (fs.existsSync(reactIndex)) {
-    app.use('/app', (req, res, next) => {
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
-        next();
-        return;
-      }
-      res.sendFile(reactIndex);
-    });
-  }
-
   const apiLimiter = rateLimit({
     windowMs: 60_000,
     /** Dashboard + execution page poll multiple endpoints; shared limiter counts all /api/* using this instance */
@@ -111,6 +95,10 @@ export function createDashboardApp(params: {
     legacyHeaders: false,
   });
 
+  /**
+   * Register JSON routes **before** `express.static` so nothing under `public/` can shadow `/api/*`
+   * and so a stale UI never “works” while the server is actually an old build without these handlers.
+   */
   app.get('/health', (_req, res) => {
     const poll = getIngestSnapshot();
     const sseOk = env.pinnacle.useDropsPoll ? false : params.sse.connected;
@@ -147,6 +135,21 @@ export function createDashboardApp(params: {
   app.get('/api/dashboard/filters', apiLimiter, getDashboardFiltersView());
   app.get('/api/dashboard/proxies', apiLimiter, getDashboardProxiesView());
   app.get('/api/dashboard/stream', getDashboardStream(dashDeps));
+
+  const publicDir = path.join(process.cwd(), 'public');
+  app.use(express.static(publicDir));
+
+  /** Vite build output: `public/app/` — SPA fallback after `express.static` misses. */
+  const reactIndex = path.join(publicDir, 'app', 'index.html');
+  if (fs.existsSync(reactIndex)) {
+    app.use('/app', (req, res, next) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        next();
+        return;
+      }
+      res.sendFile(reactIndex);
+    });
+  }
 
   return app;
 }
