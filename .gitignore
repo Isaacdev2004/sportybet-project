@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .env
+# Filled client handoff (may contain secrets)
+client-dashboard-access.txt
 logs/
 data/accounts.json
 data/sessions/

@@ -1,0 +1,25 @@
+================================================================================
+  VALUE BETTING ENGINE — DASHBOARD ACCESS FOR CLIENT
+  Copy this file to client-dashboard-access.txt on your machine, fill in the
+  blanks, then send securely (avoid public chats). Do not commit filled copies.
+================================================================================
+
+Dashboard URL (include :3000 unless you use a reverse proxy on port 80):
+
+  http://___________________________________________________________________
+
+Username:
+
+  ____________________________________________________________________________
+
+Password:
+
+  ____________________________________________________________________________
+
+Quick checks for your client:
+  • Open the URL in Safari or Chrome; the browser should ask for username and password.
+  • If the page times out, the server firewall must allow TCP port 3000 (host panel + UFW).
+
+Operator: put your VPS public IP or hostname in the URL line before sending.
+
+================================================================================
