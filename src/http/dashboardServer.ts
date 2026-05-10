@@ -1,5 +1,7 @@
+import { timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import express from 'express';
+import type { RequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 
 import { env } from '../config/env.js';
@@ -14,6 +16,54 @@ import {
 } from '../dashboard/settingsController.js';
 import { listAccounts, reloadAccounts } from '../dashboard/accountsController.js';
 
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const x = Buffer.from(a, 'utf8');
+  const y = Buffer.from(b, 'utf8');
+  if (x.length !== y.length) return false;
+  return timingSafeEqual(x, y);
+}
+
+/** When DASHBOARD_USERNAME + DASHBOARD_PASSWORD are set, require HTTP Basic Auth. */
+function createDashboardBasicAuth(): RequestHandler | undefined {
+  const user = env.dashboard.username;
+  const pass = env.dashboard.password;
+  if (!user || pass === '') return undefined;
+
+  return (req, res, next) => {
+    if (env.dashboard.publicHealth && req.method === 'GET' && req.path === '/health') {
+      return next();
+    }
+
+    const hdr = req.headers.authorization;
+    if (!hdr?.startsWith('Basic ')) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Dashboard"');
+      res.status(401).send('Authentication required');
+      return;
+    }
+
+    let decoded: string;
+    try {
+      decoded = Buffer.from(hdr.slice(6).trim(), 'base64').toString('utf8');
+    } catch {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Dashboard"');
+      res.status(401).send('Invalid credentials');
+      return;
+    }
+
+    const colon = decoded.indexOf(':');
+    const u = colon >= 0 ? decoded.slice(0, colon) : decoded;
+    const p = colon >= 0 ? decoded.slice(colon + 1) : '';
+
+    if (!timingSafeEqualStr(u, user) || !timingSafeEqualStr(p, pass)) {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Dashboard"');
+      res.status(401).send('Invalid credentials');
+      return;
+    }
+
+    next();
+  };
+}
+
 export function createDashboardApp(params: {
   sse: PinnacleSseClient;
   store: RecentStore;
@@ -21,6 +71,11 @@ export function createDashboardApp(params: {
 }): express.Express {
   const app = express();
   app.use(express.json({ limit: '256kb' }));
+
+  const basicAuth = createDashboardBasicAuth();
+  if (basicAuth) {
+    app.use(basicAuth);
+  }
 
   const publicDir = path.join(process.cwd(), 'public');
 

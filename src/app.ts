@@ -46,6 +46,15 @@ logger.info('[boot] telegram', {
   maxQueueMs: env.telegram.maxQueueMs,
 });
 
+const dashboardBasicAuth =
+  env.dashboard.username !== '' && env.dashboard.password !== '';
+logger.info('[boot] dashboard', {
+  basicAuth: dashboardBasicAuth,
+  publicHealth: env.dashboard.publicHealth,
+  host: env.server.host,
+  port: env.server.port,
+});
+
 function gracefulShutdown(signal: string): void {
   logger.info('[boot] shutdown signal', { signal });
   poller?.stop();

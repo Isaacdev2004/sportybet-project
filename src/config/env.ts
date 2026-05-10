@@ -78,6 +78,16 @@ export const env = {
     port: num(process.env.PORT, 3000),
     host: process.env.HOST ?? '0.0.0.0',
   },
+  /**
+   * When DASHBOARD_USERNAME and DASHBOARD_PASSWORD are both non-empty, all dashboard routes
+   * require HTTP Basic Auth except optionally GET /health (see dashboard.publicHealth).
+   */
+  dashboard: {
+    username: process.env.DASHBOARD_USERNAME?.trim() ?? '',
+    password: process.env.DASHBOARD_PASSWORD ?? '',
+    /** If false, /health also requires Basic Auth when credentials are set. Default true. */
+    publicHealth: process.env.DASHBOARD_PUBLIC_HEALTH !== 'false',
+  },
   logging: {
     level: process.env.LOG_LEVEL ?? 'info',
     dir: process.env.LOG_DIR
