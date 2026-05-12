@@ -11,13 +11,40 @@ import 'dotenv/config';
 
 import { getAccounts } from '../account/accountManager.js';
 import { executionEnv } from '../config/executionEnv.js';
-import { ExecutionBudget } from '../risk/riskManager.js';
+import { ExecutionBudget, ExecutionTimeExceededError } from '../risk/riskManager.js';
 import { ensureLoggedInSportyBet } from '../execution/sessionManager.js';
 import { goToLiveListPage } from '../execution/directSportyBetNav.js';
 import { shutdownBrowser } from '../execution/playwrightManager.js';
 import { readSportyBetApiCatalog } from '../services/sportybet/api/catalog.js';
 import { resolveProveOrDiscoverHeadless } from '../utils/playwrightHeadless.js';
+import { delay } from '../utils/helpers.js';
 import { logger } from '../utils/logger.js';
+
+function num(v: string | undefined, fallback: number): number {
+  if (v === undefined || v === '') return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function printCatalogSummary(): void {
+  const rows = readSportyBetApiCatalog(50);
+  logger.info('[discover] catalog tail', {
+    path: executionEnv.sportyBetApiCatalogPath,
+    recent: rows.length,
+    sampleUrls: rows.slice(0, 12).map((r) => r.url),
+  });
+  console.log(
+    JSON.stringify(
+      {
+        catalogPath: executionEnv.sportyBetApiCatalogPath,
+        recentEntries: rows.length,
+        urls: rows.map((r) => ({ method: r.method, status: r.status, url: r.url })),
+      },
+      null,
+      2,
+    ),
+  );
+}
 
 async function main(): Promise<void> {
   if (!executionEnv.sportyBetApiCapture) {
@@ -30,15 +57,21 @@ async function main(): Promise<void> {
   }
   const account = accounts[0]!;
   const headless = resolveProveOrDiscoverHeadless('discover');
-  const budget = new ExecutionBudget(120_000);
+  const loginBudgetMs = num(process.env.EXECUTION_DISCOVER_LOGIN_BUDGET_MS, 180_000);
+  const sportBudgetMs = num(process.env.EXECUTION_DISCOVER_SPORT_BUDGET_MS, 120_000);
 
-  logger.info('[discover] starting', { accountId: account.id, headless });
+  logger.info('[discover] starting', {
+    accountId: account.id,
+    headless,
+    loginBudgetMs,
+    sportBudgetMs,
+  });
 
   try {
     const page = await ensureLoggedInSportyBet({
       account,
       headless,
-      budget,
+      budget: new ExecutionBudget(loginBudgetMs),
       workerSlot: executionEnv.sportyBetApiWorkerSlot,
     });
 
@@ -50,28 +83,28 @@ async function main(): Promise<void> {
     ];
 
     for (const v of verticals) {
-      logger.info('[discover] navigating live list', { sport: v.label });
-      await goToLiveListPage(page, base, v.label, budget, v.raw);
-      await page.waitForTimeout(4_000);
+      const sportBudget = new ExecutionBudget(sportBudgetMs);
+      try {
+        logger.info('[discover] navigating live list', { sport: v.label });
+        await goToLiveListPage(page, base, v.label, sportBudget, v.raw);
+        await delay(4_000);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        logger.warn('[discover] sport navigation failed — continuing', {
+          sport: v.label,
+          err: msg,
+        });
+      }
     }
 
-    const rows = readSportyBetApiCatalog(30);
-    logger.info('[discover] catalog tail', {
-      path: executionEnv.sportyBetApiCatalogPath,
-      recent: rows.length,
-      sampleUrls: rows.slice(0, 8).map((r) => r.url),
-    });
-    console.log(
-      JSON.stringify(
-        {
-          catalogPath: executionEnv.sportyBetApiCatalogPath,
-          recentEntries: rows.length,
-          urls: rows.map((r) => ({ method: r.method, status: r.status, url: r.url })),
-        },
-        null,
-        2,
-      ),
-    );
+    printCatalogSummary();
+  } catch (e) {
+    if (e instanceof ExecutionTimeExceededError) {
+      logger.warn('[discover] login budget exceeded — printing partial catalog');
+      printCatalogSummary();
+      return;
+    }
+    throw e;
   } finally {
     await shutdownBrowser().catch(() => {});
   }
