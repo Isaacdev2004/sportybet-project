@@ -2,6 +2,7 @@ import { executionEnv } from '../config/executionEnv.js';
 import { logger } from '../utils/logger.js';
 import type { OddsDropSignal } from '../types/index.js';
 import { appendSportyBetApiCatalog } from './sportybet/api/catalog.js';
+import { resolveSportyBetEventId } from './sportybet/api/eventResolve.js';
 import {
   extractDecimalOddsFromBody,
   extractOddsNearAnchor,
@@ -23,8 +24,9 @@ function expandPathTemplate(
   template: string,
   signal: OddsDropSignal,
   side: 'over' | 'under',
+  eventId: string,
 ): string {
-  const parentId = signal.parentId ?? '';
+  const parentId = eventId || signal.parentId || '';
   const line = String(signal.line ?? '');
   const designation = signal.designation ?? side;
   const sport = signal.sport ?? '';
@@ -34,6 +36,7 @@ function expandPathTemplate(
   const market = signal.market ?? signal.sector ?? '';
 
   return template
+    .replaceAll('{eventId}', encodeURIComponent(eventId))
     .replaceAll('{parentId}', encodeURIComponent(parentId))
     .replaceAll('{line}', encodeURIComponent(line))
     .replaceAll('{designation}', encodeURIComponent(designation))
@@ -45,12 +48,16 @@ function expandPathTemplate(
     .replaceAll('{market}', encodeURIComponent(market));
 }
 
-function buildRequestUrls(signal: OddsDropSignal, side: 'over' | 'under'): string[] {
+function buildRequestUrls(
+  signal: OddsDropSignal,
+  side: 'over' | 'under',
+  eventId: string,
+): string[] {
   const base = apiBaseUrl().replace(/\/+$/, '');
   const paths = executionEnv.sportyBetApiOddsPaths;
   if (paths.length === 0) return [];
   return paths.map((p: string) => {
-    const path = expandPathTemplate(p, signal, side);
+    const path = expandPathTemplate(p, signal, side, eventId);
     return `${base}${path.startsWith('/') ? path : `/${path}`}`;
   });
 }
@@ -60,7 +67,13 @@ function oddsFromResponse(
   side: 'over' | 'under',
   signal: OddsDropSignal,
 ): number | undefined {
-  const direct = extractDecimalOddsFromBody(body, side, executionEnv.sportyBetApiOddsJsonPath);
+  const line = signal.line ?? undefined;
+  const direct = extractDecimalOddsFromBody(
+    body,
+    side,
+    executionEnv.sportyBetApiOddsJsonPath,
+    line,
+  );
   if (direct != null) return direct;
   if (!executionEnv.sportyBetApiHeuristicExtract) return undefined;
   return extractOddsNearAnchor(body, pinnacleAnchorOdds(signal));
@@ -78,13 +91,26 @@ export async function fetchSportyBetQuoteFromApi(params: {
     return undefined;
   }
 
-  const urls = buildRequestUrls(params.signal, params.side);
-  if (urls.length === 0) {
+  const paths = executionEnv.sportyBetApiOddsPaths;
+  if (paths.length === 0) {
     logger.warn(
       '[sportybet-api] SPORTYBET_ODDS_SOURCE=api but no SPORTYBET_API_ODDS_PATH(S) — run npm run discover:sportybet-api',
     );
     return undefined;
   }
+
+  const eventId = (await resolveSportyBetEventId(params.signal)) ?? '';
+  if (!eventId) {
+    logger.info('[sportybet-api] no SportyBet event id — skip odds request', {
+      parentId: params.signal.parentId,
+      home: params.signal.home,
+      away: params.signal.away,
+      sport: params.signal.sport,
+    });
+    return undefined;
+  }
+
+  const urls = buildRequestUrls(params.signal, params.side, eventId);
 
   for (const url of urls) {
     try {
@@ -107,6 +133,7 @@ export async function fetchSportyBetQuoteFromApi(params: {
           status: res.status,
           url,
           parentId: params.signal.parentId,
+          eventId,
         });
         continue;
       }
@@ -121,12 +148,14 @@ export async function fetchSportyBetQuoteFromApi(params: {
       logger.info('[sportybet-api] response had no usable decimal odds', {
         url,
         parentId: params.signal.parentId,
+        eventId,
       });
     } catch (e) {
       logger.warn('[sportybet-api] fetch error', {
         err: e instanceof Error ? e.message : String(e),
         url,
         parentId: params.signal.parentId,
+        eventId,
       });
     }
   }

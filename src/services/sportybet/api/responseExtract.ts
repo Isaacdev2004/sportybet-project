@@ -31,12 +31,16 @@ export function extractDecimalOddsFromBody(
   body: unknown,
   side: 'over' | 'under',
   dotPath?: string,
+  line?: string | number,
 ): number | undefined {
   if (dotPath?.trim()) {
     const v = extractByDotPath(body, dotPath.trim());
     const n = parseDecimal(v);
     if (n != null) return n;
   }
+
+  const factsCenter = extractFactsCenterEventOdds(body, side, line);
+  if (factsCenter != null) return factsCenter;
 
   if (!body || typeof body !== 'object') return undefined;
   const o = body as Record<string, unknown>;
@@ -58,6 +62,58 @@ export function extractDecimalOddsFromBody(
       const n = extractDecimalOddsFromBody(v, side);
       if (n != null) return n;
     }
+  }
+  return undefined;
+}
+
+/** `factsCenter/event` totals markets (`id` 18, `specifier` total=LINE). */
+export function extractFactsCenterEventOdds(
+  body: unknown,
+  side: 'over' | 'under',
+  line?: string | number,
+): number | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const data = (body as Record<string, unknown>).data;
+  if (!data || typeof data !== 'object') return undefined;
+  const markets = (data as Record<string, unknown>).markets;
+  if (!Array.isArray(markets)) return undefined;
+
+  const lineStr = line !== undefined && line !== '' ? String(line).trim() : '';
+  const wantSpec = lineStr ? `total=${lineStr}` : undefined;
+  const sideNeedle = side === 'over' ? 'over' : 'under';
+
+  const pickFromMarket = (market: Record<string, unknown>): number | undefined => {
+    const outcomes = market.outcomes;
+    if (!Array.isArray(outcomes)) return undefined;
+    for (const outcome of outcomes) {
+      if (!outcome || typeof outcome !== 'object') continue;
+      const o = outcome as Record<string, unknown>;
+      const desc = String(o.desc ?? '').toLowerCase();
+      if (!desc.includes(sideNeedle)) continue;
+      const n = parseDecimal(o.odds);
+      if (n != null) return n;
+    }
+    return undefined;
+  };
+
+  if (wantSpec) {
+    for (const market of markets) {
+      if (!market || typeof market !== 'object') continue;
+      const m = market as Record<string, unknown>;
+      if (m.specifier !== wantSpec) continue;
+      const n = pickFromMarket(m);
+      if (n != null) return n;
+    }
+    return undefined;
+  }
+
+  for (const market of markets) {
+    if (!market || typeof market !== 'object') continue;
+    const m = market as Record<string, unknown>;
+    const name = String(m.name ?? m.desc ?? '').toLowerCase();
+    if (!name.includes('over/under') && m.id !== '18') continue;
+    const n = pickFromMarket(m);
+    if (n != null) return n;
   }
   return undefined;
 }
