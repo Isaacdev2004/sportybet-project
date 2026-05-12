@@ -110,7 +110,7 @@ export const executionEnv = {
   sportyBetApiUserAgent:
     process.env.SPORTYBET_API_USER_AGENT ??
     'Mozilla/5.0 (compatible; ValueEngine/1.0; +https://sportybet.com)',
-  sportyBetApiTimeoutMs: Math.max(2_000, num(process.env.SPORTYBET_API_TIMEOUT_MS, 12_000)),
+  sportyBetApiTimeoutMs: Math.max(2_000, num(process.env.SPORTYBET_API_TIMEOUT_MS, 20_000)),
   /** Semicolon- or newline-separated path templates (see `sportybetApiClient`). */
   sportyBetApiOddsPaths: (process.env.SPORTYBET_API_ODDS_PATHS ?? process.env.SPORTYBET_API_ODDS_PATH ?? '')
     .split(/[;\n]/)

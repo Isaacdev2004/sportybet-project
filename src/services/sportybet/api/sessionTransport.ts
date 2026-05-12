@@ -6,6 +6,7 @@ import { getAccounts } from '../../../account/accountManager.js';
 import { executionEnv } from '../../../config/executionEnv.js';
 import { getOrCreateContext, sessionStoragePath } from '../../../execution/playwrightManager.js';
 import { parseProxy } from '../../../account/proxyManager.js';
+import { runSerial } from '../../../utils/serialQueue.js';
 import { logger } from '../../../utils/logger.js';
 
 export interface SportyBetApiHttpResult {
@@ -15,6 +16,9 @@ export interface SportyBetApiHttpResult {
   body: unknown;
   via: 'playwright' | 'fetch';
 }
+
+const API_HTTP_QUEUE = 'sportybet:api_http';
+const inFlightRequests = new Map<string, Promise<SportyBetApiHttpResult>>();
 
 function cookiesHeaderForUrl(storagePath: string, targetUrl: string): string | undefined {
   if (!fs.existsSync(storagePath)) return undefined;
@@ -123,35 +127,76 @@ async function requestViaFetch(
   };
 }
 
-/** Authenticated GET/POST using saved session cookies (Playwright jar preferred). */
+function shouldRetryWithPlaywright(result: SportyBetApiHttpResult): boolean {
+  return result.status === 401 || result.status === 403;
+}
+
+async function dispatchRequest(
+  url: string,
+  method: string,
+  accountId?: string,
+): Promise<SportyBetApiHttpResult> {
+  const resolvedAccountId =
+    accountId ?? getAccounts().find((a) => a.enabled !== false)?.id;
+  const headers = resolvedAccountId ? buildHeaders(url, resolvedAccountId) : undefined;
+  const hasSessionCookies = Boolean(headers?.Cookie);
+
+  if (hasSessionCookies) {
+    try {
+      const fetched = await requestViaFetch(url, method, resolvedAccountId);
+      if (fetched.ok || !executionEnv.sportyBetApiUsePlaywrightTransport) {
+        return fetched;
+      }
+      if (!shouldRetryWithPlaywright(fetched)) {
+        return fetched;
+      }
+    } catch (e) {
+      logger.debug('[sportybet-api] fetch transport failed', {
+        err: e instanceof Error ? e.message : String(e),
+        url,
+      });
+    }
+  }
+
+  if (resolvedAccountId && executionEnv.sportyBetApiUsePlaywrightTransport) {
+    try {
+      const account = getAccounts().find((a) => a.id === resolvedAccountId);
+      if (account) {
+        const ctx = await getOrCreateContext({
+          accountId: resolvedAccountId,
+          workerSlot: executionEnv.sportyBetApiWorkerSlot,
+          proxy: parseProxy(account.proxy),
+          headless: executionEnv.headless,
+        });
+        return await requestViaPlaywright(ctx, url, method);
+      }
+    } catch (e) {
+      logger.warn('[sportybet-api] playwright transport failed — fetch fallback', {
+        err: e instanceof Error ? e.message : String(e),
+        url,
+      });
+    }
+  }
+
+  return requestViaFetch(url, method, resolvedAccountId);
+}
+
+/** Authenticated GET/POST using saved session cookies (serialized; fetch first when cookies exist). */
 export async function sportyBetApiRequest(params: {
   url: string;
   method?: 'GET' | 'POST';
   accountId?: string;
 }): Promise<SportyBetApiHttpResult> {
   const method = params.method ?? 'GET';
-  const accountId =
-    params.accountId ?? getAccounts().find((a) => a.enabled !== false)?.id;
+  const dedupeKey = `${method}:${params.url}`;
+  const pending = inFlightRequests.get(dedupeKey);
+  if (pending) return pending;
 
-  if (accountId && executionEnv.sportyBetApiUsePlaywrightTransport) {
-    try {
-      const account = getAccounts().find((a) => a.id === accountId);
-      if (account) {
-        const ctx = await getOrCreateContext({
-          accountId,
-          workerSlot: executionEnv.sportyBetApiWorkerSlot,
-          proxy: parseProxy(account.proxy),
-          headless: executionEnv.headless,
-        });
-        return await requestViaPlaywright(ctx, params.url, method);
-      }
-    } catch (e) {
-      logger.warn('[sportybet-api] playwright transport failed — fetch fallback', {
-        err: e instanceof Error ? e.message : String(e),
-        url: params.url,
-      });
-    }
-  }
-
-  return requestViaFetch(params.url, method, accountId);
+  const work = runSerial(API_HTTP_QUEUE, () =>
+    dispatchRequest(params.url, method, params.accountId),
+  ).finally(() => {
+    inFlightRequests.delete(dedupeKey);
+  });
+  inFlightRequests.set(dedupeKey, work);
+  return work;
 }

@@ -2,7 +2,7 @@ import { executionEnv } from '../config/executionEnv.js';
 import { logger } from '../utils/logger.js';
 import type { OddsDropSignal } from '../types/index.js';
 import { appendSportyBetApiCatalog } from './sportybet/api/catalog.js';
-import { resolveSportyBetEventId } from './sportybet/api/eventResolve.js';
+import { resolveSportyBetEventId, canResolveSportyBetApiSignal } from './sportybet/api/eventResolve.js';
 import {
   extractDecimalOddsFromBody,
   extractOddsNearAnchor,
@@ -96,6 +96,10 @@ export async function fetchSportyBetQuoteFromApi(params: {
     logger.warn(
       '[sportybet-api] SPORTYBET_ODDS_SOURCE=api but no SPORTYBET_API_ODDS_PATH(S) — run npm run discover:sportybet-api',
     );
+    return undefined;
+  }
+
+  if (!canResolveSportyBetApiSignal(params.signal)) {
     return undefined;
   }
 

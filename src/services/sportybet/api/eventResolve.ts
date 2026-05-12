@@ -16,6 +16,7 @@ interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>();
+const missCache = new Map<string, number>();
 const inFlight = new Map<string, Promise<string | undefined>>();
 
 function cacheTtlMs(): number {
@@ -48,6 +49,13 @@ export function sportyBetSportIdForSignal(signal: OddsDropSignal): string | unde
   if (blob.includes('basket') || blob.includes('nba') || blob.includes('wnba')) return 'sr:sport:2';
   if (blob.includes('foot') || blob.includes('soccer')) return 'sr:sport:1';
   return undefined;
+}
+
+export function canResolveSportyBetApiSignal(signal: OddsDropSignal): boolean {
+  const raw = signal.parentId?.trim() ?? '';
+  if (isSportyBetEventId(raw)) return true;
+  if (!sportyBetSportIdForSignal(signal)) return false;
+  return Boolean(signal.home?.trim() && signal.away?.trim());
 }
 
 function collectEventRows(node: unknown, out: SportyBetEventRow[], depth: number): void {
@@ -124,6 +132,9 @@ async function resolveFromList(signal: OddsDropSignal): Promise<string | undefin
 
   const cacheKey = `${sportId}::${canonicalPairKey(home, away)}`;
   const now = Date.now();
+  const missUntil = missCache.get(cacheKey);
+  if (missUntil != null && missUntil > now) return undefined;
+
   const hit = cache.get(cacheKey);
   if (hit && hit.expiresAtMs > now) return hit.eventId;
 
@@ -134,6 +145,7 @@ async function resolveFromList(signal: OddsDropSignal): Promise<string | undefin
     const rows = await fetchEventList(sportId);
     const row = matchEventRow(signal, rows);
     if (!row) {
+      missCache.set(cacheKey, now + Math.min(cacheTtlMs(), 60_000));
       logger.info('[sportybet-api] event resolve miss', {
         parentId: signal.parentId,
         sportId,
