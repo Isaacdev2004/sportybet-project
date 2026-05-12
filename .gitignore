@@ -9,5 +9,6 @@ data/accounts.json
 data/sessions/
 data/screenshots/
 data/execution_ledger.jsonl
+data/sportybet_api_catalog.jsonl
 *.log
 .DS_Store

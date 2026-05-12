@@ -22,10 +22,11 @@ function parseScenarioList(raw: string | undefined): string[] {
 
 function parseOddsSource(raw: string | undefined): 'mock' | 'playwright' | 'api' {
   const s = (raw ?? '').trim().toLowerCase();
-  if (s === 'api') return 'api';
-  if (s === 'playwright') return 'playwright';
   if (s === 'mock') return 'mock';
-  return envBool(process.env.SPORTYBET_LIVE_QUOTES) ? 'playwright' : 'mock';
+  if (s === 'playwright') return 'playwright';
+  if (s === 'api') return 'api';
+  /** Default: API RE path (falls back to Playwright/mock when unconfigured). */
+  return 'api';
 }
 
 export const executionEnv = {
@@ -105,13 +106,35 @@ export const executionEnv = {
    */
   sportyBetOddsSource: parseOddsSource(process.env.SPORTYBET_ODDS_SOURCE),
   sportyBetApiBaseUrl: (process.env.SPORTYBET_API_BASE_URL ?? '').trim(),
-  /** Template path with `{parentId}`, `{line}`, `{designation}` placeholders. */
-  sportyBetApiOddsPath: (process.env.SPORTYBET_API_ODDS_PATH ?? '').trim(),
   sportyBetApiAuthToken: process.env.SPORTYBET_API_AUTH_TOKEN ?? '',
   sportyBetApiUserAgent:
     process.env.SPORTYBET_API_USER_AGENT ??
     'Mozilla/5.0 (compatible; ValueEngine/1.0; +https://sportybet.com)',
   sportyBetApiTimeoutMs: Math.max(2_000, num(process.env.SPORTYBET_API_TIMEOUT_MS, 12_000)),
+  /** Semicolon- or newline-separated path templates (see `sportybetApiClient`). */
+  sportyBetApiOddsPaths: (process.env.SPORTYBET_API_ODDS_PATHS ?? process.env.SPORTYBET_API_ODDS_PATH ?? '')
+    .split(/[;\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean),
+  /** Optional dot path into JSON for decimal odds, e.g. `data.outcomes.0.odds`. */
+  sportyBetApiOddsJsonPath: (process.env.SPORTYBET_API_ODDS_JSON_PATH ?? '').trim(),
+  /** When templates/JSON path miss, scan JSON near Pinnacle anchor odds. */
+  sportyBetApiHeuristicExtract: process.env.SPORTYBET_API_HEURISTIC_EXTRACT !== 'false',
+  /** Log SportyBet JSON responses from Playwright navigation (RE catalog). */
+  sportyBetApiCapture: envBool(process.env.SPORTYBET_API_CAPTURE),
+  sportyBetApiCatalogPath: process.env.SPORTYBET_API_CATALOG_PATH
+    ? path.resolve(process.cwd(), process.env.SPORTYBET_API_CATALOG_PATH)
+    : path.resolve(process.cwd(), 'data', 'sportybet_api_catalog.jsonl'),
+  sportyBetApiCaptureSampleBytes: Math.max(
+    2_000,
+    Math.min(200_000, num(process.env.SPORTYBET_API_CAPTURE_SAMPLE_BYTES, 24_000)),
+  ),
+  /** Use Playwright cookie jar for API calls (recommended). */
+  sportyBetApiUsePlaywrightTransport: process.env.SPORTYBET_API_USE_PLAYWRIGHT_TRANSPORT !== 'false',
+  sportyBetApiWorkerSlot: Math.max(
+    0,
+    Math.min(31, Math.floor(num(process.env.SPORTYBET_API_WORKER_SLOT, 9))),
+  ),
   /**
    * When true, soft quotes for EV / Telegram / dashboard use Playwright to read SportyBet’s UI odds
    * (same nav path as execution). Probes run **one at a time** globally — slow under burst traffic.

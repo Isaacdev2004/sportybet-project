@@ -4,6 +4,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 
 import { executionEnv, sportyBetHomeUrl } from '../config/executionEnv.js';
 import { logger } from '../utils/logger.js';
+import { attachSportyBetApiCapture } from '../services/sportybet/api/pageCapture.js';
 import type { ProxySettings } from '../account/types.js';
 import { runSerial } from '../utils/serialQueue.js';
 
@@ -42,6 +43,7 @@ export async function getOrCreateSessionPage(
   }
   if (p) sessionPageBySession.delete(sessionKey);
   p = await ctx.newPage();
+  attachSportyBetApiCapture(p);
   sessionPageBySession.set(sessionKey, p);
   return p;
 }

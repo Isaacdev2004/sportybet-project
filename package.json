@@ -11,6 +11,7 @@
     "dev": "tsx watch src/app.ts",
     "dev:ui": "npm --prefix client run dev",
     "prove:login": "tsx src/scripts/proveSportyBetLogin.ts",
+    "discover:sportybet-api": "tsx src/scripts/discoverSportyBetApi.ts",
     "typecheck": "tsc --noEmit"
   },
   "engines": {

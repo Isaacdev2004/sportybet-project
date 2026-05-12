@@ -1,15 +1,74 @@
 import { executionEnv } from '../config/executionEnv.js';
 import { logger } from '../utils/logger.js';
 import type { OddsDropSignal } from '../types/index.js';
+import { appendSportyBetApiCatalog } from './sportybet/api/catalog.js';
+import {
+  extractDecimalOddsFromBody,
+  extractOddsNearAnchor,
+  pinnacleAnchorOdds,
+} from './sportybet/api/responseExtract.js';
+import { sportyBetApiRequest } from './sportybet/api/sessionTransport.js';
 
 export interface SportyBetApiQuote {
   odds: number;
   source: string;
+  url?: string;
+}
+
+function apiBaseUrl(): string {
+  return executionEnv.sportyBetApiBaseUrl.trim() || executionEnv.sportyBetBaseUrl.trim();
+}
+
+function expandPathTemplate(
+  template: string,
+  signal: OddsDropSignal,
+  side: 'over' | 'under',
+): string {
+  const parentId = signal.parentId ?? '';
+  const line = String(signal.line ?? '');
+  const designation = signal.designation ?? side;
+  const sport = signal.sport ?? '';
+  const league = signal.league ?? '';
+  const home = signal.home ?? '';
+  const away = signal.away ?? '';
+  const market = signal.market ?? signal.sector ?? '';
+
+  return template
+    .replaceAll('{parentId}', encodeURIComponent(parentId))
+    .replaceAll('{line}', encodeURIComponent(line))
+    .replaceAll('{designation}', encodeURIComponent(designation))
+    .replaceAll('{side}', encodeURIComponent(side))
+    .replaceAll('{sport}', encodeURIComponent(sport))
+    .replaceAll('{league}', encodeURIComponent(league))
+    .replaceAll('{home}', encodeURIComponent(home))
+    .replaceAll('{away}', encodeURIComponent(away))
+    .replaceAll('{market}', encodeURIComponent(market));
+}
+
+function buildRequestUrls(signal: OddsDropSignal, side: 'over' | 'under'): string[] {
+  const base = apiBaseUrl().replace(/\/+$/, '');
+  const paths = executionEnv.sportyBetApiOddsPaths;
+  if (paths.length === 0) return [];
+  return paths.map((p: string) => {
+    const path = expandPathTemplate(p, signal, side);
+    return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+  });
+}
+
+function oddsFromResponse(
+  body: unknown,
+  side: 'over' | 'under',
+  signal: OddsDropSignal,
+): number | undefined {
+  const direct = extractDecimalOddsFromBody(body, side, executionEnv.sportyBetApiOddsJsonPath);
+  if (direct != null) return direct;
+  if (!executionEnv.sportyBetApiHeuristicExtract) return undefined;
+  return extractOddsNearAnchor(body, pinnacleAnchorOdds(signal));
 }
 
 /**
- * Reverse-engineered SportyBet HTTP surface (fill paths/tokens as you discover them).
- * When `SPORTYBET_ODDS_SOURCE=api`, this runs before Playwright live quotes.
+ * Reverse-engineered SportyBet HTTP odds (session cookies + catalog). Primary soft-book path when
+ * `SPORTYBET_ODDS_SOURCE=api`.
  */
 export async function fetchSportyBetQuoteFromApi(params: {
   signal: OddsDropSignal;
@@ -19,83 +78,58 @@ export async function fetchSportyBetQuoteFromApi(params: {
     return undefined;
   }
 
-  const base = executionEnv.sportyBetApiBaseUrl.trim() || executionEnv.sportyBetBaseUrl.trim();
-  if (!base) {
-    logger.warn('[sportybet-api] SPORTYBET_ODDS_SOURCE=api but SPORTYBET_API_BASE_URL is empty');
-    return undefined;
-  }
-
-  const pathTemplate = executionEnv.sportyBetApiOddsPath.trim();
-  if (!pathTemplate) {
+  const urls = buildRequestUrls(params.signal, params.side);
+  if (urls.length === 0) {
     logger.warn(
-      '[sportybet-api] set SPORTYBET_API_ODDS_PATH (e.g. /api/.../events/{parentId}/markets)',
+      '[sportybet-api] SPORTYBET_ODDS_SOURCE=api but no SPORTYBET_API_ODDS_PATH(S) — run npm run discover:sportybet-api',
     );
     return undefined;
   }
 
-  const parentId = params.signal.parentId ?? '';
-  const path = pathTemplate
-    .replaceAll('{parentId}', encodeURIComponent(parentId))
-    .replaceAll('{line}', encodeURIComponent(String(params.signal.line ?? '')))
-    .replaceAll('{designation}', encodeURIComponent(params.signal.designation ?? params.side));
-
-  const url = `${base.replace(/\/+$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
-
-  try {
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-      'User-Agent': executionEnv.sportyBetApiUserAgent,
-    };
-    const token = executionEnv.sportyBetApiAuthToken.trim();
-    if (token) {
-      headers.Authorization = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
-    }
-
-    const res = await fetch(url, {
-      method: 'GET',
-      headers,
-      signal: AbortSignal.timeout(executionEnv.sportyBetApiTimeoutMs),
-    });
-
-    if (!res.ok) {
-      logger.info('[sportybet-api] odds request failed', {
-        status: res.status,
-        parentId,
+  for (const url of urls) {
+    try {
+      const res = await sportyBetApiRequest({ url, method: 'GET' });
+      if (executionEnv.sportyBetApiCapture) {
+        appendSportyBetApiCatalog({
+          ts: Date.now(),
+          method: 'GET',
+          url,
+          status: res.status,
+          contentType: 'application/json',
+          sample:
+            typeof res.body === 'string'
+              ? res.body.slice(0, executionEnv.sportyBetApiCaptureSampleBytes)
+              : JSON.stringify(res.body).slice(0, executionEnv.sportyBetApiCaptureSampleBytes),
+        });
+      }
+      if (!res.ok) {
+        logger.info('[sportybet-api] odds request failed', {
+          status: res.status,
+          url,
+          parentId: params.signal.parentId,
+        });
+        continue;
+      }
+      const odds = oddsFromResponse(res.body, params.side, params.signal);
+      if (odds != null && odds > 1 && Number.isFinite(odds)) {
+        return {
+          odds: Math.round(odds * 1000) / 1000,
+          source: `sportybet_api:${res.via}`,
+          url,
+        };
+      }
+      logger.info('[sportybet-api] response had no usable decimal odds', {
+        url,
+        parentId: params.signal.parentId,
       });
-      return undefined;
+    } catch (e) {
+      logger.warn('[sportybet-api] fetch error', {
+        err: e instanceof Error ? e.message : String(e),
+        url,
+        parentId: params.signal.parentId,
+      });
     }
+  }
 
-    const body: unknown = await res.json();
-    const odds = extractDecimalOdds(body, params.side);
-    if (odds != null && odds > 1 && Number.isFinite(odds)) {
-      return { odds: Math.round(odds * 1000) / 1000, source: 'sportybet_api' };
-    }
-    logger.info('[sportybet-api] response had no usable decimal odds', { parentId });
-    return undefined;
-  } catch (e) {
-    logger.warn('[sportybet-api] fetch error', {
-      err: e instanceof Error ? e.message : String(e),
-      parentId,
-    });
-    return undefined;
-  }
-}
-
-function extractDecimalOdds(body: unknown, side: 'over' | 'under'): number | undefined {
-  if (!body || typeof body !== 'object') return undefined;
-  const o = body as Record<string, unknown>;
-  const keys = side === 'over' ? ['overOdds', 'over', 'homeOdds'] : ['underOdds', 'under', 'awayOdds'];
-  for (const k of keys) {
-    const v = o[k];
-    if (typeof v === 'number' && v > 1) return v;
-    if (typeof v === 'string') {
-      const n = Number(v);
-      if (Number.isFinite(n) && n > 1) return n;
-    }
-  }
-  const data = o.data;
-  if (data && typeof data === 'object') {
-    return extractDecimalOdds(data, side);
-  }
   return undefined;
 }

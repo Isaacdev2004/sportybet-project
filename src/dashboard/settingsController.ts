@@ -33,10 +33,11 @@ export function getExecutionSettings(_req: Request, res: Response): void {
       accountWorkers: executionEnv.accountWorkers,
       stakePickMidpoint: executionEnv.stakePickMidpoint,
       stakeRoundStep: executionEnv.stakeRoundStep,
-      sportyBetApiConfigured: Boolean(
-        executionEnv.sportyBetApiOddsPath.trim() &&
-          (executionEnv.sportyBetApiBaseUrl.trim() || executionEnv.sportyBetBaseUrl.trim()),
-      ),
+      sportyBetApiOddsPaths: executionEnv.sportyBetApiOddsPaths,
+      sportyBetApiCapture: executionEnv.sportyBetApiCapture,
+      sportyBetApiCatalogPath: executionEnv.sportyBetApiCatalogPath,
+      sportyBetApiHeuristicExtract: executionEnv.sportyBetApiHeuristicExtract,
+      sportyBetApiConfigured: executionEnv.sportyBetApiOddsPaths.length > 0,
     },
   });
 }
