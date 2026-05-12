@@ -7,7 +7,8 @@
  *
  * Optional env:
  *   EXECUTION_TEST_ACCOUNT_ID=main     — pick account id (default: first in file)
- *   EXECUTION_PROVE_HEADLESS=true      — no visible window (default: false = show browser)
+ *   EXECUTION_PROVE_HEADLESS=true      — force headless (default on Linux VPS without $DISPLAY)
+ *   EXECUTION_PROVE_HEADED=true        — force visible window (needs X11 or xvfb-run)
  *   EXECUTION_PROVE_LOGIN_BUDGET_MS=120000
  *   EXECUTION_PROVE_LOGIN_PAUSE_SEC=30 — seconds before the window closes (default 30; not “forever”)
  *   EXECUTION_PROVE_LOGIN_WAIT_ENTER=true — keep browser open until you press Enter in this terminal (best for manual checks)
@@ -23,6 +24,7 @@ import { getAccounts } from '../account/accountManager.js';
 import { ensureLoggedInSportyBet } from '../execution/sessionManager.js';
 import { shutdownBrowser } from '../execution/playwrightManager.js';
 import { ExecutionBudget } from '../risk/riskManager.js';
+import { resolveProveOrDiscoverHeadless } from '../utils/playwrightHeadless.js';
 import { logger } from '../utils/logger.js';
 
 function num(v: string | undefined, fallback: number): number {
@@ -61,8 +63,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  /** For this script, default to a visible window unless explicitly headless. */
-  const headless = process.env.EXECUTION_PROVE_HEADLESS === 'true';
+  const headless = resolveProveOrDiscoverHeadless('prove-login');
 
   const budgetMs = num(process.env.EXECUTION_PROVE_LOGIN_BUDGET_MS, 120_000);
   const budget = new ExecutionBudget(budgetMs);
