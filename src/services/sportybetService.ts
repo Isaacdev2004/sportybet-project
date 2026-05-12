@@ -1,6 +1,7 @@
 import type { FullMarketQuote, OddsDropSignal } from '../types/index.js';
 import { executionEnv } from '../config/executionEnv.js';
 import { probeSportyBetDecimalOdds } from '../execution/sportybetLiveQuoteService.js';
+import { fetchSportyBetQuoteFromApi } from './sportybetApiClient.js';
 import { totalLinesEquivalent } from '../utils/helpers.js';
 import { logger } from '../utils/logger.js';
 
@@ -75,7 +76,29 @@ export async function fetchSportyBetQuote(params: {
   const alignResolved: 'over' | 'under' = align ?? 'over';
   const mockOdds = Math.round(base * (1.03 + jitter) * 1000) / 1000;
 
-  if (executionEnv.sportyBetLiveQuotes) {
+  if (executionEnv.sportyBetOddsSource === 'api') {
+    const api = await fetchSportyBetQuoteFromApi({ signal, side: alignResolved });
+    if (api) {
+      return {
+        book: 'SportyBet',
+        odds: api.odds,
+        designation: alignResolved,
+        line: lineSoft,
+      };
+    }
+    if (!executionEnv.sportyBetLiveQuoteFallback) {
+      logger.info('[sportybet-api] strict mode — no fallback after API miss', {
+        parentId: signal.parentId,
+      });
+      return undefined;
+    }
+    logger.warn('[sportybet-api] falling back after API miss', { parentId: signal.parentId });
+  }
+
+  if (
+    executionEnv.sportyBetOddsSource === 'playwright' ||
+    executionEnv.sportyBetLiveQuotes
+  ) {
     const live = await probeSportyBetDecimalOdds({
       signal,
       side: alignResolved,

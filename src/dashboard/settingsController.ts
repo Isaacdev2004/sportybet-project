@@ -29,6 +29,14 @@ export function getExecutionSettings(_req: Request, res: Response): void {
       sportyBetLiveQuoteFallback: executionEnv.sportyBetLiveQuoteFallback,
       sportyBetLiveQuoteBudgetMs: executionEnv.sportyBetLiveQuoteBudgetMs,
       sportyBetLiveQuoteWorkerSlot: executionEnv.sportyBetLiveQuoteWorkerSlot,
+      sportyBetOddsSource: executionEnv.sportyBetOddsSource,
+      accountWorkers: executionEnv.accountWorkers,
+      stakePickMidpoint: executionEnv.stakePickMidpoint,
+      stakeRoundStep: executionEnv.stakeRoundStep,
+      sportyBetApiConfigured: Boolean(
+        executionEnv.sportyBetApiOddsPath.trim() &&
+          (executionEnv.sportyBetApiBaseUrl.trim() || executionEnv.sportyBetBaseUrl.trim()),
+      ),
     },
   });
 }

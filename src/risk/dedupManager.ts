@@ -37,14 +37,35 @@ export function getDedupBackend(): DedupBackend {
   return globalDedup;
 }
 
+/** Canonical line for dedup — 150.5 and 150.50 match; 149.5 stays distinct from 150.5. */
+export function normalizeDedupLine(line: string | number | undefined): string {
+  if (line === undefined || line === '') return '';
+  const raw = String(line).trim();
+  const n = Number(raw);
+  if (Number.isFinite(n)) return String(n);
+  return raw.toLowerCase();
+}
+
+export function normalizeDedupDesignation(designation: string | undefined): string {
+  return (designation ?? '').trim().toLowerCase();
+}
+
+/**
+ * Execution dedup identity: same event + market + **line** + **selection** within TTL.
+ * Example: Under 150.5 twice in 30m → skip; Under 150.5 vs Under 149.5 → both allowed.
+ */
 export function buildDedupKey(params: {
   parentId?: string;
   market?: string;
   sector?: string;
   line?: string | number;
+  designation?: string;
 }): string {
-  const line = params.line !== undefined ? String(params.line).trim() : '';
-  return `${params.parentId ?? '?'}::${params.market ?? ''}::${params.sector ?? ''}::${line}`;
+  const line = normalizeDedupLine(params.line);
+  const designation = normalizeDedupDesignation(params.designation);
+  const market = (params.market ?? '').trim().toLowerCase();
+  const sector = (params.sector ?? '').trim().toLowerCase();
+  return `${params.parentId ?? '?'}::${market}::${sector}::${line}::${designation}`;
 }
 
 export function shouldSkipDuplicate(

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 import type { ExecutionAccount } from '../execution/types.js';
 import { executionEnv } from '../config/executionEnv.js';
+import { normalizeStakeRanges } from '../stake/stakeManager.js';
 import { logger } from '../utils/logger.js';
 
 interface AccountsFileShape {
@@ -29,7 +30,12 @@ function readAccountsFromDisk(): ExecutionAccount[] {
       logger.error('[accounts] invalid JSON shape');
       return [];
     }
-    cache = list.filter((a) => a.id);
+    cache = list
+      .filter((a) => a.id)
+      .map((a) => ({
+        ...a,
+        stakeRanges: normalizeStakeRanges(a.stakeRanges, a.id),
+      }));
     lastMtimeMs = st.mtimeMs;
     return cache;
   } catch (e) {

@@ -20,6 +20,14 @@ function parseScenarioList(raw: string | undefined): string[] {
   return raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
 
+function parseOddsSource(raw: string | undefined): 'mock' | 'playwright' | 'api' {
+  const s = (raw ?? '').trim().toLowerCase();
+  if (s === 'api') return 'api';
+  if (s === 'playwright') return 'playwright';
+  if (s === 'mock') return 'mock';
+  return envBool(process.env.SPORTYBET_LIVE_QUOTES) ? 'playwright' : 'mock';
+}
+
 export const executionEnv = {
   enabled: envBool(process.env.EXECUTION_ENABLED),
   /**
@@ -27,6 +35,7 @@ export const executionEnv = {
    * often need 25–45s; default 45s. Lower only if you accept more `execution_time_exceeded` aborts.
    */
   maxExecutionMs: Math.max(500, num(process.env.EXECUTION_MAX_MS, 45_000)),
+  /** Identical event+market+line+selection within this window → skip (default 30m). */
   dedupTtlMs: Math.max(60_000, num(process.env.EXECUTION_DEDUP_TTL_MS, 30 * 60_000)),
   maxOddsDrift: Math.max(0, num(process.env.EXECUTION_MAX_ODDS_DRIFT, 0.05)),
   headless: process.env.EXECUTION_HEADLESS !== 'false',
@@ -84,8 +93,25 @@ export const executionEnv = {
    * 1 = legacy single queue; 4 = up to four executions at once for the same account.
    * @see EXECUTION_ACCOUNT_WORKERS
    */
-  /** Default 2: overlaps runs per account to cut queue wait when many signals fire. Set 1 if OOM/unstable. */
-  accountWorkers: Math.max(1, Math.min(8, Math.floor(num(process.env.EXECUTION_ACCOUNT_WORKERS, 2)))),
+  /** Default 4: parallel Playwright slots per account. Set 1 if OOM/unstable. */
+  accountWorkers: Math.max(1, Math.min(8, Math.floor(num(process.env.EXECUTION_ACCOUNT_WORKERS, 4)))),
+  /** Stake from each [min,max]: random uniform (default). Set EXECUTION_STAKE_PICK_MIDPOINT=true for average. */
+  stakePickMidpoint: envBool(process.env.EXECUTION_STAKE_PICK_MIDPOINT),
+  /** Round stake to nearest NGN step (0 = round to 2 dp). */
+  stakeRoundStep: Math.max(0, num(process.env.EXECUTION_STAKE_ROUND_STEP, 0)),
+  /**
+   * Soft odds source for EV: `mock` | `playwright` | `api`. Empty env → playwright when
+   * `SPORTYBET_LIVE_QUOTES`, else mock.
+   */
+  sportyBetOddsSource: parseOddsSource(process.env.SPORTYBET_ODDS_SOURCE),
+  sportyBetApiBaseUrl: (process.env.SPORTYBET_API_BASE_URL ?? '').trim(),
+  /** Template path with `{parentId}`, `{line}`, `{designation}` placeholders. */
+  sportyBetApiOddsPath: (process.env.SPORTYBET_API_ODDS_PATH ?? '').trim(),
+  sportyBetApiAuthToken: process.env.SPORTYBET_API_AUTH_TOKEN ?? '',
+  sportyBetApiUserAgent:
+    process.env.SPORTYBET_API_USER_AGENT ??
+    'Mozilla/5.0 (compatible; ValueEngine/1.0; +https://sportybet.com)',
+  sportyBetApiTimeoutMs: Math.max(2_000, num(process.env.SPORTYBET_API_TIMEOUT_MS, 12_000)),
   /**
    * When true, soft quotes for EV / Telegram / dashboard use Playwright to read SportyBet’s UI odds
    * (same nav path as execution). Probes run **one at a time** globally — slow under burst traffic.

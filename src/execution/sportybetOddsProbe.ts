@@ -1,14 +1,22 @@
+import { executionEnv } from '../config/executionEnv.js';
 import type { OddsDropSignal } from '../types/index.js';
+import { fetchSportyBetQuoteFromApi } from '../services/sportybetApiClient.js';
 
-/** Live odds probe — replace with real HTTP scrape or internal API. */
+/** Live odds probe — API when configured, else signal anchor until Playwright page read. */
 export async function fetchSportyBetLiveOddsForProbe(params: {
   baseUrl: string;
   signal: OddsDropSignal;
   expectedSide: 'over' | 'under';
 }): Promise<{ odds: number; source: string } | undefined> {
+  if (executionEnv.sportyBetOddsSource === 'api') {
+    const api = await fetchSportyBetQuoteFromApi({
+      signal: params.signal,
+      side: params.expectedSide,
+    });
+    if (api) return api;
+  }
+
   void params.baseUrl;
-  void params.expectedSide;
-  /** Phase 2 placeholder: wire Playwright page.evaluate or mobile API. */
   const fromSignal =
     typeof params.signal.currentOdds === 'number' &&
     Number.isFinite(params.signal.currentOdds)

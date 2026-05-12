@@ -377,6 +377,7 @@ export async function executeBetsOnOpportunity(
     market: opp.signal.market,
     sector: opp.signal.sector,
     line: opp.signal.line,
+    designation: opp.signal.designation ?? opp.side,
   });
   if (shouldSkipDuplicate(getDedupBackend(), dedupKey, settings.dedupTtlMs)) {
     const finishedAtMs = Date.now();
