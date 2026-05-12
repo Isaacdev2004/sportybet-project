@@ -22,7 +22,7 @@ import readline from 'node:readline';
 
 import { getAccounts } from '../account/accountManager.js';
 import { ensureLoggedInSportyBet } from '../execution/sessionManager.js';
-import { shutdownBrowser } from '../execution/playwrightManager.js';
+import { saveStorageState, shutdownBrowser } from '../execution/playwrightManager.js';
 import { ExecutionBudget } from '../risk/riskManager.js';
 import { resolveProveOrDiscoverHeadless } from '../utils/playwrightHeadless.js';
 import { logger } from '../utils/logger.js';
@@ -83,20 +83,38 @@ async function main(): Promise<void> {
 
     const marker = await page.$(loggedInSelector).catch(() => null);
 
-    const shotDir = path.join(process.cwd(), 'data', 'screenshots');
-    fs.mkdirSync(shotDir, { recursive: true });
-    const shotPath = path.join(shotDir, `prove-login-${account.id}.png`);
-    await page.screenshot({ path: shotPath, fullPage: false });
-
     if (marker) {
       logger.info('[prove-login] PASS — logged-in marker visible', {
         selector: loggedInSelector,
-        screenshot: shotPath,
       });
+      try {
+        await saveStorageState(account.id, page.context());
+      } catch (e) {
+        logger.warn('[prove-login] session save failed', {
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
     } else {
-      logger.warn('[prove-login] UNCLEAR — marker not found (page still opened; check screenshot)', {
+      logger.warn('[prove-login] UNCLEAR — marker not found (page still opened)', {
         selector: loggedInSelector,
+      });
+    }
+
+    const shotDir = path.join(process.cwd(), 'data', 'screenshots');
+    fs.mkdirSync(shotDir, { recursive: true });
+    const shotPath = path.join(shotDir, `prove-login-${account.id}.png`);
+    try {
+      await page.screenshot({
+        path: shotPath,
+        fullPage: false,
+        timeout: 10_000,
+        animations: 'disabled',
+      });
+      logger.info('[prove-login] screenshot saved', { screenshot: shotPath });
+    } catch (e) {
+      logger.warn('[prove-login] screenshot skipped', {
         screenshot: shotPath,
+        err: e instanceof Error ? e.message : String(e),
       });
     }
 
