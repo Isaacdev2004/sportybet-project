@@ -42,12 +42,29 @@ interface FeedRow {
   evSign?: string;
   bet?: string;
   detail?: string;
+  isLive?: boolean;
+  minEvPercent?: number;
+  skipCode?: string;
 }
 
 function evCls(sign: string | undefined) {
   if (sign === 'plus') return 'text-emerald-400';
   if (sign === 'minus') return 'text-red-400';
   return '';
+}
+
+function kindLabel(kind: string | undefined) {
+  if (kind === 'pipeline_skip') return 'Skip';
+  if (kind === 'opportunity') return 'Value';
+  if (kind === 'execution') return 'Bet';
+  if (kind === 'signal') return 'Drop';
+  return kind ?? '—';
+}
+
+function liveBadge(live: boolean | undefined) {
+  if (live === true) return <span className="rounded bg-sky-900/80 px-1 text-[10px] text-sky-200">Live</span>;
+  if (live === false) return <span className="text-[10px] text-sb-muted">Pre</span>;
+  return '—';
 }
 
 function betCls(s: string | undefined) {
@@ -138,10 +155,16 @@ export function DashboardHome() {
 
       <div>
         <h2 className="mb-2 text-sm font-medium text-sb-muted">Live feed</h2>
+        <p className="mb-2 text-xs text-sb-muted max-w-3xl">
+          <strong>Skip</strong> rows show EV/NVP vs engine thresholds (e.g. negative EV or below min EV).{' '}
+          <strong>Value</strong> passed filters and triggered alerts. <strong>Bet</strong> is Playwright execution.
+        </p>
         <div className="max-h-[52vh] overflow-auto rounded-xl border border-sb-line">
           <table className="w-full border-collapse text-left text-xs">
             <thead className="sticky top-0 bg-sb-panel">
               <tr className="border-b border-sb-line text-sb-muted">
+                <th className="p-2">Kind</th>
+                <th className="p-2">Live</th>
                 <th className="p-2">Time</th>
                 <th className="p-2">Sport / League</th>
                 <th className="p-2">Game</th>
@@ -150,6 +173,7 @@ export function DashboardHome() {
                 <th className="p-2">Drop %</th>
                 <th className="p-2">Soft odds</th>
                 <th className="p-2">EV %</th>
+                <th className="p-2">Min EV</th>
                 <th className="p-2">±EV</th>
                 <th className="p-2">Bet</th>
                 <th className="p-2">Detail</th>
@@ -168,8 +192,12 @@ export function DashboardHome() {
                     ? r.softOdds.toFixed(2)
                     : String(r.softOdds ?? '—');
                 const evTag = r.evSign === 'plus' ? '+' : r.evSign === 'minus' ? '−' : '·';
+                const minEv =
+                  typeof r.minEvPercent === 'number' ? r.minEvPercent.toFixed(1) : '—';
                 return (
                   <tr key={i} className="border-b border-sb-line/80 align-top">
+                    <td className="p-2 whitespace-nowrap text-sb-muted">{kindLabel(r.kind)}</td>
+                    <td className="p-2">{liveBadge(r.isLive)}</td>
                     <td className="p-2 whitespace-nowrap">{fmtTs(r.ts)}</td>
                     <td className="p-2">
                       {r.sport}
@@ -186,9 +214,10 @@ export function DashboardHome() {
                     <td className="p-2">{drop}</td>
                     <td className="p-2">{odds}</td>
                     <td className={`p-2 ${evCls(r.evSign)}`}>{ev}</td>
+                    <td className="p-2 text-sb-muted">{minEv}</td>
                     <td className={`p-2 ${evCls(r.evSign)}`}>{evTag}</td>
                     <td className={`p-2 ${betCls(r.bet)}`}>{r.bet}</td>
-                    <td className="p-2 text-sb-muted">{r.detail}</td>
+                    <td className="p-2 text-sb-muted max-w-[220px]">{r.detail}</td>
                   </tr>
                 );
               })}

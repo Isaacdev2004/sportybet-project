@@ -19,6 +19,8 @@ import {
   utcDayBounds,
 } from './ledgerStats.js';
 import { getAccounts } from '../account/accountManager.js';
+import { getEngineControlState, setEnginePaused } from '../state/engineRuntime.js';
+import { getSportyBetApiHealthCached } from '../services/sportybet/api/sportybetApiHealth.js';
 
 export interface DashboardControllerDeps {
   sse: PinnacleSseClient;
@@ -56,52 +58,62 @@ function mergedExecutionRows(max = 200): BetExecutionResult[] {
 }
 
 export function getDashboardBootstrap(deps: DashboardControllerDeps) {
-  return (_req: Request, res: Response): void => {
-    const poll = getIngestSnapshot();
-    const sseOk = env.pinnacle.useDropsPoll ? false : deps.sse.connected;
-    const snap = deps.store.dashboardSnapshot();
-    const ledgerRows = readLedgerTailForDashboard(25_000);
-    const daily = dailyTrackerFromRows(ledgerRows);
-    const { label: utcDay } = utcDayBounds();
-    const accounts = getAccounts().map((a) => {
-      const d = dailyAccountTotals(ledgerRows, a.id);
-      return {
-        id: a.id,
-        username: a.username,
-        enabled: a.enabled !== false,
-        proxyActive: Boolean(a.proxy?.trim()),
-        proxyMasked: a.proxy
-          ? a.proxy.includes('@')
-            ? '***@' + a.proxy.split('@').pop()
-            : a.proxy.slice(0, 12) + (a.proxy.length > 12 ? '…' : '')
-          : null,
-        stakeRanges: a.stakeRanges,
-        betsPlacedToday: d.placed,
-        betsFailedToday: d.failed,
-        betsSkippedToday: d.skipped,
-        dailyUnitsPnl: d.unitsPnl,
-      };
-    });
+  return async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const poll = getIngestSnapshot();
+      const sseOk = env.pinnacle.useDropsPoll ? false : deps.sse.connected;
+      const snap = deps.store.dashboardSnapshot();
+      const ledgerRows = readLedgerTailForDashboard(25_000);
+      const daily = dailyTrackerFromRows(ledgerRows);
+      const { label: utcDay } = utcDayBounds();
+      const accounts = getAccounts().map((a) => {
+        const d = dailyAccountTotals(ledgerRows, a.id);
+        return {
+          id: a.id,
+          username: a.username,
+          enabled: a.enabled !== false,
+          proxyActive: Boolean(a.proxy?.trim()),
+          proxyMasked: a.proxy
+            ? a.proxy.includes('@')
+              ? '***@' + a.proxy.split('@').pop()
+              : a.proxy.slice(0, 12) + (a.proxy.length > 12 ? '…' : '')
+            : null,
+          stakeRanges: a.stakeRanges,
+          betsPlacedToday: d.placed,
+          betsFailedToday: d.failed,
+          betsSkippedToday: d.skipped,
+          dailyUnitsPnl: d.unitsPnl,
+        };
+      });
 
-    res.json({
-      brand: 'SportyBet',
-      bookLabel: 'SportyBet',
-      uptimeSec: Math.floor((Date.now() - deps.startedAtMs) / 1000),
-      sseConnected: sseOk,
-      ingest: poll,
-      pinnacle: {
-        ingestMode: env.pinnacle.useDropsPoll ? 'drops_poll' : 'sse',
-        ssePath: env.pinnacle.ssePath,
-        apiBase: env.pinnacle.apiBase,
-        dropsPollMs: env.pinnacle.dropsPollMs,
-      },
-      utcDay,
-      dailyTracker: daily,
-      accounts,
-      note:
-        'Daily tracker uses UTC midnight. Settlement (won/lost/units P/L) is not wired yet — columns show placeholders where applicable.',
-      snapshot: snap,
-    });
+      const sportyBetApiHealth = await getSportyBetApiHealthCached();
+
+      res.json({
+        brand: 'SportyBet',
+        bookLabel: 'SportyBet',
+        uptimeSec: Math.floor((Date.now() - deps.startedAtMs) / 1000),
+        sseConnected: sseOk,
+        ingest: poll,
+        pinnacle: {
+          ingestMode: env.pinnacle.useDropsPoll ? 'drops_poll' : 'sse',
+          ssePath: env.pinnacle.ssePath,
+          apiBase: env.pinnacle.apiBase,
+          dropsPollMs: env.pinnacle.dropsPollMs,
+        },
+        utcDay,
+        dailyTracker: daily,
+        accounts,
+        engine: getEngineControlState(),
+        sportyBetApiHealth,
+        note:
+          'Daily tracker uses UTC midnight. Settlement (won/lost/units P/L) is not wired yet — columns show placeholders where applicable.',
+        snapshot: snap,
+      });
+    } catch (e) {
+      res.status(500).json({
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
   };
 }
 
@@ -110,6 +122,29 @@ export function getDashboardFeed(deps: DashboardControllerDeps) {
     const snap = deps.store.dashboardSnapshot();
     const execs = mergedExecutionRows(180);
     const feed: Record<string, unknown>[] = [];
+
+    for (const sk of snap.pipelineSkips ?? []) {
+      const ev = sk.evPercent;
+      feed.push({
+        kind: 'pipeline_skip',
+        ts: sk.ts,
+        sport: sk.sport,
+        league: sk.league,
+        game: sk.game,
+        market: sk.market,
+        period: sk.period ?? '—',
+        nvp: sk.nvp ?? '—',
+        dropPct: sk.dropPct ?? '—',
+        softOdds: sk.softOdds ?? '—',
+        evPct: ev ?? '—',
+        evSign: typeof ev === 'number' ? (ev > 0 ? 'plus' : ev < 0 ? 'minus' : 'neutral') : 'neutral',
+        bet: 'skipped',
+        detail: sk.reasonLabel,
+        skipCode: sk.reason,
+        minEvPercent: sk.minEvPercent,
+        isLive: sk.isLive,
+      });
+    }
 
     for (const s of snap.signals) {
       feed.push({
@@ -127,6 +162,7 @@ export function getDashboardFeed(deps: DashboardControllerDeps) {
         evSign: 'neutral',
         bet: '—',
         detail: 'Raw drop ingested',
+        isLive: s.isLive,
       });
     }
 
@@ -151,6 +187,7 @@ export function getDashboardFeed(deps: DashboardControllerDeps) {
         evSign: ev > 0 ? 'plus' : ev < 0 ? 'minus' : 'neutral',
         bet: '—',
         detail: 'Value pass — queued for execution / alerts',
+        isLive: o.isLive,
       });
     }
 
@@ -174,6 +211,7 @@ export function getDashboardFeed(deps: DashboardControllerDeps) {
         bet: betSummary.status,
         detail: betSummary.detail,
         outcome: r.outcome,
+        isLive: o?.isLive,
       });
     }
 
@@ -372,6 +410,24 @@ export function getDashboardProxiesView() {
       note:
         'Assign proxies via data/accounts.json (proxy field per account). iProyal auto-buy is not implemented in this build.',
     });
+  };
+}
+
+export function getDashboardControl() {
+  return (_req: Request, res: Response): void => {
+    res.json(getEngineControlState());
+  };
+}
+
+export function postDashboardControl() {
+  return (req: Request, res: Response): void => {
+    const paused = (req.body as { paused?: unknown })?.paused;
+    if (typeof paused !== 'boolean') {
+      res.status(400).json({ error: 'JSON body must include boolean "paused"' });
+      return;
+    }
+    setEnginePaused(paused);
+    res.json(getEngineControlState());
   };
 }
 

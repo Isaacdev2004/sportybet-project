@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { filters } from '../config/filters.js';
+import { isEnginePaused } from '../state/engineRuntime.js';
 import type {
   BettingOpportunity,
   FullMarketQuote,
@@ -28,7 +29,7 @@ import {
 } from '../services/sportybetService.js';
 import { sendBettingAlert } from '../services/telegramService.js';
 import { logger } from '../utils/logger.js';
-import type { RecentStore } from '../state/recentStore.js';
+import type { RecentStore, PipelineSkipEntry } from '../state/recentStore.js';
 import { enqueueAutomatedExecution } from '../execution/executionBridge.js';
 
 export function formatOddsMovement(signal: OddsDropSignal): string {
@@ -60,10 +61,33 @@ function buildProviderNvpStubQuote(signal: OddsDropSignal): FullMarketQuote {
 /**
  * Async hot path — each signal is isolated; failures are logged, never thrown from the worker.
  */
+function skipRow(
+  signal: OddsDropSignal,
+  pinnacle: FullMarketQuote | undefined,
+  partial: Omit<PipelineSkipEntry, 'ts' | 'game' | 'sport' | 'league' | 'market' | 'period' | 'isLive'>,
+): PipelineSkipEntry {
+  const game = `${signal.home ?? pinnacle?.home ?? '?'} vs ${signal.away ?? pinnacle?.away ?? '?'}`;
+  return {
+    ts: Date.now(),
+    sport: signal.sport ?? pinnacle?.sport,
+    league: signal.league ?? pinnacle?.league,
+    game,
+    market: signal.market ?? pinnacle?.market,
+    period: signal.periodName ?? (signal.period != null ? String(signal.period) : undefined),
+    isLive: signal.isLive ?? pinnacle?.isLive,
+    ...partial,
+  };
+}
+
 export async function processOddsSignal(
   signal: OddsDropSignal,
   store?: RecentStore,
 ): Promise<void> {
+  if (isEnginePaused()) {
+    logger.debug('[pipeline] engine paused — skip signal');
+    return;
+  }
+
   store?.recordSignal(signal);
   logger.info('[pipeline] signal accepted', {
     parentId: signal.parentId,
@@ -77,9 +101,16 @@ export async function processOddsSignal(
 
   try {
     if (!signal.parentId) {
+      const reason = 'missing_parent_id' as const;
       logger.info('[pipeline] skipped', {
-        reason: summarizeSkip('missing_parent_id'),
+        reason: summarizeSkip(reason),
       });
+      store?.recordPipelineSkip(
+        skipRow(signal, undefined, {
+          reason,
+          reasonLabel: summarizeSkip(reason),
+        }),
+      );
       return;
     }
 
@@ -108,9 +139,16 @@ export async function processOddsSignal(
     }
 
     if (!pinnacle) {
+      const reason = 'fetch_market_failed' as const;
       logger.info('[pipeline] skipped', {
-        reason: summarizeSkip('fetch_market_failed'),
+        reason: summarizeSkip(reason),
       });
+      store?.recordPipelineSkip(
+        skipRow(signal, undefined, {
+          reason,
+          reasonLabel: summarizeSkip(reason),
+        }),
+      );
       return;
     }
 
@@ -126,6 +164,12 @@ export async function processOddsSignal(
       logger.info('[pipeline] skipped', {
         reason: summarizeSkip(dec.reason),
       });
+      store?.recordPipelineSkip(
+        skipRow(signal, pinnacle, {
+          reason: dec.reason ?? 'no_soft_match',
+          reasonLabel: summarizeSkip(dec.reason),
+        }),
+      );
       return;
     }
 
@@ -172,6 +216,12 @@ export async function processOddsSignal(
       logger.info('[pipeline] skipped', {
         reason: summarizeSkip(dec.reason),
       });
+      store?.recordPipelineSkip(
+        skipRow(signal, pinnacle, {
+          reason: dec.reason ?? 'invalid_odds',
+          reasonLabel: summarizeSkip(dec.reason),
+        }),
+      );
       return;
     }
 
@@ -189,6 +239,17 @@ export async function processOddsSignal(
         evPercent: evResult.evPercent,
         dropPct: signalDropPercent(signal),
       });
+      store?.recordPipelineSkip(
+        skipRow(signal, pinnacle, {
+          reason: dec.reason ?? 'unknown',
+          reasonLabel: summarizeSkip(dec.reason),
+          evPercent: evResult.evPercent,
+          nvp: evResult.nvpUsed,
+          dropPct: signalDropPercent(signal),
+          softOdds: soft.odds,
+          minEvPercent: filters.minEvPercent,
+        }),
+      );
       return;
     }
 

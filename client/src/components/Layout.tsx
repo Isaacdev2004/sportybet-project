@@ -5,6 +5,15 @@ import { fetchJson } from '../api';
 interface BootstrapHeader {
   sseConnected?: boolean;
   ingest?: { dropsPollActive?: boolean; lastPollOk?: boolean };
+  engine?: { paused: boolean; executionEnabledFromEnv: boolean; effectiveProcessing: boolean };
+  sportyBetApiHealth?: {
+    ok: boolean;
+    latencyMs: number;
+    status?: number;
+    error?: string;
+    sessionMissing?: boolean;
+    accountId?: string;
+  };
 }
 
 const nav = [
@@ -19,6 +28,7 @@ const nav = [
 
 export function Layout() {
   const [head, setHead] = useState<BootstrapHeader | null>(null);
+  const [controlBusy, setControlBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +58,31 @@ export function Layout() {
     ok = !!head.sseConnected;
     pill = head.sseConnected ? 'SSE · connected' : 'SSE · reconnecting';
   }
+
+  const sb = head?.sportyBetApiHealth;
+  const sbOk = sb?.ok === true;
+  const sbLabel = sb?.sessionMissing
+    ? 'SportyBet API · no session'
+    : sb?.ok
+      ? `SportyBet API · OK (${sb.latencyMs}ms)`
+      : `SportyBet API · ${sb?.error ?? 'fail'}`;
+
+  const paused = head?.engine?.paused === true;
+  const setPaused = async (next: boolean) => {
+    setControlBusy(true);
+    try {
+      const ctrl = await fetchJson<NonNullable<BootstrapHeader['engine']>>('/api/dashboard/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paused: next }),
+      });
+      setHead((h) => (h ? { ...h, engine: ctrl } : null));
+    } catch {
+      /* ignore */
+    } finally {
+      setControlBusy(false);
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-sb-bg">
@@ -91,14 +126,45 @@ export function Layout() {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-sb-line bg-sb-panel px-6 py-3">
-          <span
-            className={`rounded-full border px-3 py-1 text-sm ${
-              ok ? 'border-emerald-900 text-emerald-400' : 'border-sb-line text-sb-muted'
-            }`}
-          >
-            {pill}
-          </span>
-          <StreamHint />
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full border px-3 py-1 text-sm ${
+                ok ? 'border-emerald-900 text-emerald-400' : 'border-sb-line text-sb-muted'
+              }`}
+            >
+              {pill}
+            </span>
+            {sb ? (
+              <span
+                title={sb.error ?? (sb.sessionMissing ? 'Run npm run prove:login' : '')}
+                className={`rounded-full border px-3 py-1 text-sm ${
+                  sbOk ? 'border-emerald-900 text-emerald-400' : 'border-amber-900 text-amber-300'
+                }`}
+              >
+                {sbLabel}
+              </span>
+            ) : null}
+            {head?.engine ? (
+              <span
+                className={`rounded-full border px-3 py-1 text-sm ${
+                  paused ? 'border-amber-900 text-amber-300' : 'border-slate-600 text-slate-300'
+                }`}
+              >
+                {paused ? 'Bot paused' : 'Bot running'}
+              </span>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={controlBusy || !head?.engine}
+              className="rounded-lg border border-sb-line bg-sb-panel px-3 py-1.5 text-sm text-slate-200 hover:bg-white/5 disabled:opacity-40"
+              onClick={() => void setPaused(!paused)}
+            >
+              {paused ? 'Resume bot' : 'Pause bot'}
+            </button>
+            <StreamHint />
+          </div>
         </header>
         <main className="flex-1 overflow-auto p-6">
           <Outlet />

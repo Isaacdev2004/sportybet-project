@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 import type { ExecutionAccount } from '../execution/types.js';
 import { executionEnv } from '../config/executionEnv.js';
@@ -58,4 +59,20 @@ export function getAccountById(id: string): ExecutionAccount | undefined {
 export function invalidateAccountsCache(): void {
   cache = null;
   lastMtimeMs = 0;
+}
+
+export function saveAccountsToDisk(accounts: ExecutionAccount[]): void {
+  const file = executionEnv.accountsFile;
+  const dir = path.dirname(file);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const normalized = accounts
+    .filter((a) => a.id?.trim())
+    .map((a) => ({
+      ...a,
+      stakeRanges: normalizeStakeRanges(a.stakeRanges, a.id),
+    }));
+  fs.writeFileSync(file, JSON.stringify({ accounts: normalized }, null, 2), 'utf8');
+  invalidateAccountsCache();
 }

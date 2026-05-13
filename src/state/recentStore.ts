@@ -2,6 +2,25 @@ import type { BettingOpportunity, OddsDropSignal } from '../types/index.js';
 
 const MAX_SIGNALS = 200;
 const MAX_OPPS = 100;
+const MAX_PIPELINE_SKIPS = 200;
+
+/** Engine rejected a line after soft + EV were known (or early skip with reason). */
+export interface PipelineSkipEntry {
+  ts: number;
+  reason: string;
+  reasonLabel: string;
+  sport?: string;
+  league?: string;
+  game: string;
+  market?: string;
+  period?: string;
+  isLive?: boolean;
+  evPercent?: number;
+  nvp?: number;
+  dropPct?: number;
+  softOdds?: number;
+  minEvPercent?: number;
+}
 
 /**
  * In-memory ring buffers for the optional HTTP dashboard (single process).
@@ -9,6 +28,7 @@ const MAX_OPPS = 100;
 export class RecentStore {
   private signals: OddsDropSignal[] = [];
   private opps: BettingOpportunity[] = [];
+  private pipelineSkips: PipelineSkipEntry[] = [];
 
   recordSignal(s: OddsDropSignal): void {
     this.signals.unshift(s);
@@ -18,6 +38,11 @@ export class RecentStore {
   recordOpportunity(o: BettingOpportunity): void {
     this.opps.unshift(o);
     if (this.opps.length > MAX_OPPS) this.opps.pop();
+  }
+
+  recordPipelineSkip(row: PipelineSkipEntry): void {
+    this.pipelineSkips.unshift(row);
+    if (this.pipelineSkips.length > MAX_PIPELINE_SKIPS) this.pipelineSkips.pop();
   }
 
   snapshot() {
@@ -32,6 +57,7 @@ export class RecentStore {
     return {
       signals: this.signals.slice(0, 120).map(sanitizeSignal),
       opportunities: this.opps.slice(0, 80).map(sanitizeOpp),
+      pipelineSkips: this.pipelineSkips.slice(0, 120),
     };
   }
 }
