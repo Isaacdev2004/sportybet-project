@@ -220,6 +220,26 @@ export function DashboardHome() {
         ) : null}
       </div>
 
+      <div className="rounded-xl border border-sky-900/40 bg-sky-950/20 p-4 text-sm leading-relaxed text-slate-200">
+        <strong className="text-sky-200">How to read “tries” vs placed</strong>
+        <p className="mt-2 text-sb-muted">
+          <strong className="text-slate-300">Tries today</strong> counts every{' '}
+          <strong className="text-slate-300">account outcome row</strong> written to the ledger for this UTC day
+          (each try ends as <em>placed</em>, <em>failed</em>, or <em>skipped</em>). So{' '}
+          <strong className="text-slate-300">placed + failed + skipped</strong> should match tries when there is one
+          account row per run. It is <strong className="text-slate-300">not</strong> “N tries that were all supposed to
+          land on SportyBet” — many tries are expected to <strong className="text-slate-300">skip</strong> (filters,
+          dedup, EV, no line) or <strong className="text-slate-300">fail</strong> (site/session/navigation).{' '}
+          <strong className="text-emerald-300/90">Placed &gt; 0</strong> only when a stake actually went through as
+          success.
+        </p>
+        <p className="mt-2 text-xs text-sb-muted">
+          This UI is served at <span className="font-mono text-slate-400">/app/</span> — bookmark that path on your
+          phone (not only <span className="font-mono text-slate-400">/dashboard.html</span>). Tap <strong>☰</strong> top-left
+          to open the menu on small screens. After deploy, hard-refresh so you are not on an old cached page.
+        </p>
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded-xl border border-sb-line bg-sb-panel p-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-sb-muted">
@@ -272,12 +292,17 @@ export function DashboardHome() {
         </div>
         <div className="rounded-xl border border-sb-line bg-sb-panel p-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-sb-muted">
-            Today · attempts
+            Tries today (UTC · ledger rows)
           </div>
           <div className="mt-1 text-2xl font-bold">{ts?.accountAttempts ?? d?.accountAttempts ?? '—'}</div>
           <div className="mt-1 text-xs text-sb-muted">
-            Each count is one account attempt in the ledger today (UTC). This is not a “sleep loop” — the
-            engine reacts to incoming drops and queued runs as fast as your limits allow.
+            Same as <strong className="text-slate-400">placed + failed + skipped</strong> below when each run writes one
+            row per account. High tries with <strong className="text-slate-400">0 placed</strong> usually means skips
+            (rules / no line / dedup) or fails (site/automation) — see the reason lists and{' '}
+            <Link to="/logs" className="text-violet-400 hover:underline">
+              Logs
+            </Link>
+            .
           </div>
         </div>
         <div className="rounded-xl border border-sb-line bg-sb-panel p-4">
@@ -291,7 +316,14 @@ export function DashboardHome() {
                 ? `${d.placedSuccess} / ${d.placedFailed} / ${d.placedSkipped}`
                 : '—'}
           </div>
-          <div className="mt-1 text-xs text-sb-muted">Account-level rows (UTC) — see reasons below</div>
+          <div className="mt-1 text-xs text-sb-muted">
+            Per account today (UTC).{' '}
+            <strong className="text-slate-400">Placed</strong> = stake went through;{' '}
+            <strong className="text-slate-400">failed</strong> = tried but error;{' '}
+            <strong className="text-slate-400">skipped</strong> = stopped before success (filters, dedup, no line,
+            etc.). The three numbers sum to <strong className="text-slate-400">tries</strong> when there is one account
+            row per run.
+          </div>
           {(boot?.todayAccountReasons?.failed?.length ?? 0) > 0 ||
           (boot?.todayAccountReasons?.skipped?.length ?? 0) > 0 ? (
             <div className="mt-3 space-y-2 border-t border-sb-line pt-3 text-left text-xs">

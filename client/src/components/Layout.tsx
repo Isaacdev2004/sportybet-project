@@ -157,7 +157,7 @@ export function Layout() {
   );
 
   return (
-    <div className="flex min-h-screen bg-sb-bg">
+    <div className="flex min-h-[100dvh] min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-sb-bg">
       {navOpen ? (
         <button
           type="button"
@@ -167,8 +167,8 @@ export function Layout() {
         />
       ) : null}
       {aside}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-sb-line bg-sb-panel px-4 py-3 md:px-6">
+      <div className="flex min-w-0 w-full max-w-full flex-1 flex-col overflow-x-hidden">
+        <header className="flex w-full max-w-full flex-wrap items-center justify-between gap-3 border-b border-sb-line bg-sb-panel px-4 py-3 md:px-6">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <button
               type="button"
@@ -236,7 +236,7 @@ export function Layout() {
             <StreamHint />
           </div>
         </header>
-        <main className="flex-1 overflow-auto p-4 pb-8 md:p-6">
+        <main className="w-full max-w-full flex-1 overflow-x-hidden overflow-y-auto p-4 pb-8 md:p-6">
           <Outlet />
         </main>
       </div>

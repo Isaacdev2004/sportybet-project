@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5"
+    />
     <title>SportyBet · Value engine</title>
     <style>
       :root {
@@ -283,10 +286,72 @@
       a {
         color: var(--accent2);
       }
+      .nav-backdrop {
+        display: none;
+      }
+      .menu-btn {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.75rem;
+        margin-right: 0.5rem;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--elev);
+        color: var(--text);
+        font-size: 0.85rem;
+        cursor: pointer;
+      }
+      .menu-btn:hover {
+        background: rgba(139, 92, 246, 0.12);
+      }
+      @media (max-width: 900px) {
+        body {
+          flex-direction: row;
+        }
+        .menu-btn {
+          display: inline-flex;
+        }
+        aside.dash-sidebar {
+          position: fixed;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          z-index: 40;
+          width: min(260px, 86vw);
+          transform: translateX(-102%);
+          transition: transform 0.22s ease-out;
+          box-shadow: 4px 0 28px rgba(0, 0, 0, 0.45);
+        }
+        body.menu-open aside.dash-sidebar {
+          transform: translateX(0);
+        }
+        body.menu-open .nav-backdrop {
+          display: block;
+          position: fixed;
+          inset: 0;
+          z-index: 35;
+          background: rgba(0, 0, 0, 0.55);
+          border: none;
+          padding: 0;
+          margin: 0;
+          cursor: pointer;
+        }
+        main {
+          width: 100%;
+          max-width: 100vw;
+          min-width: 0;
+        }
+        .content {
+          padding: 1rem 1rem 2rem;
+        }
+      }
     </style>
   </head>
   <body>
-    <aside>
+    <button type="button" class="nav-backdrop" id="navBackdrop" aria-label="Close menu"></button>
+    <aside class="dash-sidebar" id="dashSidebar">
       <div class="brand">
         SportyBet
         <small>Value engine · dashboard</small>
@@ -307,12 +372,18 @@
     </aside>
     <main>
       <header class="top">
+        <button type="button" class="menu-btn" id="menuOpenBtn" aria-label="Open menu">☰ Menu</button>
         <div class="status-pill" id="ssePill">SSE · …</div>
         <div style="font-size: 0.8rem; color: var(--muted)" id="streamHint"></div>
       </header>
       <div class="content">
         <section class="page visible" id="page-dashboard">
           <h2 class="page-title">Live overview</h2>
+          <p class="note" id="dashTip" style="border: 1px solid #1e3a5f; background: rgba(14, 165, 233, 0.08); border-radius: 10px; padding: 0.75rem 1rem">
+            <strong style="color: #7dd3fc">Tip — numbers:</strong>
+            “Tries” counts every <strong>placed + failed + skipped</strong> row in today’s ledger (not “N bets that should all have won”).
+            For full-width on your phone use the <a href="/app/">React dashboard</a> (<code>/app/</code>). This legacy page now has a ☰ menu on small screens.
+          </p>
           <p class="note" id="dashNote"></p>
           <div class="grid-3" id="dailyCards"></div>
           <h3 style="font-size: 0.9rem; color: var(--muted); margin: 1rem 0 0.5rem">
@@ -535,9 +606,9 @@
           reasonHtml += '</ul></div>';
         }
         el.innerHTML =
-          '<div class="card"><h3>Bets attempted today (UTC)</h3><div class="val">' +
+          '<div class="card"><h3>Tries today (UTC · ledger rows)</h3><div class="val">' +
           esc(d.accountAttempts) +
-          '</div><div class="sub">Each count is one account attempt in the ledger today (UTC). Not a sleep timer — the engine runs on incoming signals and queued work.</div></div>' +
+          '</div><div class="sub">Equals <strong>placed + failed + skipped</strong> when one account row is written per try. Many skips/fails with 0 placed is common — check Failed/Skipped lists and <a href="/app/logs">Logs</a> on the React app.</div></div>' +
           '<div class="card"><h3>Placed / failed / skipped</h3><div class="val">' +
           esc(d.placedSuccess) +
           ' / ' +
@@ -876,6 +947,26 @@
           document.getElementById('streamHint').textContent = 'EventSource not available';
         }
       }
+
+      function initMobileNav() {
+        const body = document.body;
+        const backdrop = document.getElementById('navBackdrop');
+        const openBtn = document.getElementById('menuOpenBtn');
+        function closeMenu() {
+          body.classList.remove('menu-open');
+        }
+        function openMenu() {
+          body.classList.add('menu-open');
+        }
+        if (openBtn) openBtn.addEventListener('click', openMenu);
+        if (backdrop) backdrop.addEventListener('click', closeMenu);
+        document.querySelectorAll('aside.dash-sidebar nav button').forEach(function (b) {
+          b.addEventListener('click', function () {
+            if (window.matchMedia('(max-width: 900px)').matches) closeMenu();
+          });
+        });
+      }
+      initMobileNav();
 
       loadBootstrap();
       loadFeed();
