@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import type { IndividualFilterRule } from '../filters/individualFilterTypes.js';
 import {
   getIndividualFilters,
+  normalizeGameTotalsSide,
   saveIndividualFilters,
 } from '../state/individualFiltersStore.js';
 
@@ -24,10 +25,15 @@ export function getIndividualFiltersHandler(_req: Request, res: Response): void 
 
 export function putIndividualFiltersHandler(req: Request, res: Response): void {
   try {
-    const body = req.body as { inplay?: unknown; prematch?: unknown };
+    const body = req.body as { inplay?: unknown; prematch?: unknown; gameTotalsSide?: unknown };
+    const existing = getIndividualFilters();
     const next = {
       inplay: parseRuleList(body.inplay, 'inplay'),
       prematch: parseRuleList(body.prematch, 'prematch'),
+      gameTotalsSide:
+        body.gameTotalsSide !== undefined && body.gameTotalsSide !== null
+          ? normalizeGameTotalsSide(body.gameTotalsSide)
+          : existing.gameTotalsSide,
     };
     saveIndividualFilters(next);
     res.json(getIndividualFilters());

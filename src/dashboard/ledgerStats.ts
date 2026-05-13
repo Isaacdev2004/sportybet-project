@@ -211,3 +211,36 @@ export function dailyTrackerFromRows(
     unitsProfitLoss: null,
   };
 }
+
+export interface TodayAccountReasonEntry {
+  reason: string;
+  count: number;
+}
+
+/** Count `SingleBetResult.reason` for skipped / failed rows in the UTC day (empty reason → "unknown"). */
+export function todayAccountResultReasonBreakdown(
+  rows: BetExecutionResult[],
+  nowMs = Date.now(),
+): { failed: TodayAccountReasonEntry[]; skipped: TodayAccountReasonEntry[] } {
+  const { startMs, endMs } = utcDayBounds(nowMs);
+  const skippedMap: Record<string, number> = {};
+  const failedMap: Record<string, number> = {};
+  for (const r of rows) {
+    if (r.finishedAtMs < startMs || r.finishedAtMs >= endMs) continue;
+    for (const ar of r.accountResults) {
+      if (ar.status === 'skipped') {
+        const k = (ar.reason ?? '').trim() || 'unknown';
+        skippedMap[k] = (skippedMap[k] ?? 0) + 1;
+      } else if (ar.status === 'failed') {
+        const k = (ar.reason ?? '').trim() || 'unknown';
+        failedMap[k] = (failedMap[k] ?? 0) + 1;
+      }
+    }
+  }
+  const toSorted = (m: Record<string, number>): TodayAccountReasonEntry[] =>
+    Object.entries(m)
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 24);
+  return { failed: toSorted(failedMap), skipped: toSorted(skippedMap) };
+}

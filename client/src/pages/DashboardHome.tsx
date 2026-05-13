@@ -20,6 +20,16 @@ interface TodaySummary {
   executionCycles: number;
 }
 
+interface TodayAccountReasonEntry {
+  reason: string;
+  count: number;
+}
+
+interface TodayAccountReasons {
+  failed: TodayAccountReasonEntry[];
+  skipped: TodayAccountReasonEntry[];
+}
+
 interface ActivityRow {
   kind?: 'execution' | 'pipeline' | 'activity';
   ts: number;
@@ -69,6 +79,7 @@ interface Bootstrap {
   liveBankrollAccountCount?: number;
   aggregateProfitVsStartingPct?: number | null;
   todaySummary?: TodaySummary;
+  todayAccountReasons?: TodayAccountReasons;
   recentActivity?: ActivityRow[];
   engine?: EngineSnap;
 }
@@ -265,7 +276,8 @@ export function DashboardHome() {
           </div>
           <div className="mt-1 text-2xl font-bold">{ts?.accountAttempts ?? d?.accountAttempts ?? '—'}</div>
           <div className="mt-1 text-xs text-sb-muted">
-            Cycles {ts?.executionCycles ?? d?.executionCycles ?? '—'}
+            Each count is one account attempt in the ledger today (UTC). This is not a “sleep loop” — the
+            engine reacts to incoming drops and queued runs as fast as your limits allow.
           </div>
         </div>
         <div className="rounded-xl border border-sb-line bg-sb-panel p-4">
@@ -279,7 +291,44 @@ export function DashboardHome() {
                 ? `${d.placedSuccess} / ${d.placedFailed} / ${d.placedSkipped}`
                 : '—'}
           </div>
-          <div className="mt-1 text-xs text-sb-muted">Account-level rows (UTC)</div>
+          <div className="mt-1 text-xs text-sb-muted">Account-level rows (UTC) — see reasons below</div>
+          {(boot?.todayAccountReasons?.failed?.length ?? 0) > 0 ||
+          (boot?.todayAccountReasons?.skipped?.length ?? 0) > 0 ? (
+            <div className="mt-3 space-y-2 border-t border-sb-line pt-3 text-left text-xs">
+              {(boot?.todayAccountReasons?.failed?.length ?? 0) > 0 ? (
+                <div>
+                  <div className="font-semibold text-rose-300/90">Failed (why)</div>
+                  <ul className="mt-1 list-inside list-disc text-sb-muted">
+                    {(boot?.todayAccountReasons?.failed ?? []).map((x) => (
+                      <li key={`f-${x.reason}`}>
+                        <span className="font-mono text-slate-300">{x.reason}</span> · {x.count}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {(boot?.todayAccountReasons?.skipped?.length ?? 0) > 0 ? (
+                <div>
+                  <div className="font-semibold text-amber-300/90">Skipped (why)</div>
+                  <ul className="mt-1 list-inside list-disc text-sb-muted">
+                    {(boot?.todayAccountReasons?.skipped ?? []).map((x) => (
+                      <li key={`s-${x.reason}`}>
+                        <span className="font-mono text-slate-300">{x.reason}</span> · {x.count}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-sb-muted">
+              No per-account failure/skip reasons in today&apos;s ledger yet (or all successes). Open{' '}
+              <Link to="/logs" className="text-violet-400 hover:underline">
+                Logs
+              </Link>{' '}
+              for full detail.
+            </p>
+          )}
         </div>
         <div className="rounded-xl border border-sb-line bg-sb-panel p-4">
           <div className="text-xs font-semibold uppercase tracking-wide text-sb-muted">

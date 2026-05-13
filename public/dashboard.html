@@ -516,19 +516,37 @@
         const el = document.getElementById('dailyCards');
         if (!bootstrap) return;
         const d = bootstrap.dailyTracker;
+        const reasons = bootstrap.todayAccountReasons || { failed: [], skipped: [] };
+        let reasonHtml = '';
+        if (reasons.failed && reasons.failed.length) {
+          reasonHtml +=
+            '<div class="reasonBlock"><strong style="color:#f87171">Failed (why)</strong><ul>';
+          for (const x of reasons.failed) {
+            reasonHtml += '<li><code>' + esc(x.reason) + '</code> · ' + esc(x.count) + '</li>';
+          }
+          reasonHtml += '</ul></div>';
+        }
+        if (reasons.skipped && reasons.skipped.length) {
+          reasonHtml +=
+            '<div class="reasonBlock"><strong style="color:#fbbf24">Skipped (why)</strong><ul>';
+          for (const x of reasons.skipped) {
+            reasonHtml += '<li><code>' + esc(x.reason) + '</code> · ' + esc(x.count) + '</li>';
+          }
+          reasonHtml += '</ul></div>';
+        }
         el.innerHTML =
           '<div class="card"><h3>Bets attempted today (UTC)</h3><div class="val">' +
           esc(d.accountAttempts) +
-          '</div><div class="sub">Execution cycles: ' +
-          esc(d.executionCycles) +
-          '</div></div>' +
+          '</div><div class="sub">Each count is one account attempt in the ledger today (UTC). Not a sleep timer — the engine runs on incoming signals and queued work.</div></div>' +
           '<div class="card"><h3>Placed / failed / skipped</h3><div class="val">' +
           esc(d.placedSuccess) +
           ' / ' +
           esc(d.placedFailed) +
           ' / ' +
           esc(d.placedSkipped) +
-          '</div><div class="sub">Account-level rows</div></div>' +
+          '</div><div class="sub">Account-level rows (UTC)</div>' +
+          (reasonHtml ? '<div class="sub reasonWrap">' + reasonHtml + '</div>' : '') +
+          '</div>' +
           '<div class="card"><h3>Bot uptime</h3><div class="val">' +
           esc(Math.floor(bootstrap.uptimeSec / 3600)) +
           'h ' +

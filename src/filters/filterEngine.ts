@@ -1,6 +1,7 @@
 import type { BettingOpportunity, OddsDropSignal } from '../types/index.js';
 import type {
   AccountFilters,
+  BetDirectionFilter,
   ExecutionAccount,
   ExecutionSettings,
   GlobalExecutionFilters,
@@ -17,6 +18,23 @@ export function scenarioFromSignal(signal: OddsDropSignal): ScenarioFilter {
   if (m.includes('spread') || m.includes('handicap')) return 'spread';
   if (m.includes('money') || m.includes('winner') || m.includes('ml')) return 'moneyline';
   return 'other';
+}
+
+/**
+ * When preference is not `both`, only **total** / **team_total** opportunities matching that O/U side pass.
+ * Configured from dashboard → Filters (`gameTotalsSide` in `individual_filters.json`).
+ */
+export function passGameTotalsSideFilter(
+  opp: BettingOpportunity,
+  pref: BetDirectionFilter,
+): { ok: boolean; reason?: string } {
+  if (pref === 'both') return { ok: true };
+  const scen = scenarioFromSignal(opp.signal);
+  if (scen !== 'total' && scen !== 'team_total') return { ok: true };
+  if (opp.side !== pref) {
+    return { ok: false, reason: 'game_totals_side_filtered' };
+  }
+  return { ok: true };
 }
 
 function directionMatches(

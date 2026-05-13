@@ -19,6 +19,7 @@ import {
   dailyAccountTotals,
   dailyTrackerFromRows,
   rangeToMs,
+  todayAccountResultReasonBreakdown,
   type StatsRangeKey,
   utcDayBounds,
 } from './ledgerStats.js';
@@ -204,6 +205,7 @@ export function getDashboardBootstrap(deps: DashboardControllerDeps) {
         (r) => r.finishedAtMs >= startMs && r.finishedAtMs < endMs,
       );
       const todayAgg = aggregateExecutionRows(todayLedgerRows, 'today');
+      const todayAccountReasons = todayAccountResultReasonBreakdown(todayLedgerRows);
 
       const accountsRaw = getAccounts();
       let totalStartingBankroll = 0;
@@ -315,6 +317,7 @@ export function getDashboardBootstrap(deps: DashboardControllerDeps) {
           totalStakedSuccess: todayAgg.totalStakedSuccess,
           executionCycles: todayAgg.executionCycles,
         },
+        todayAccountReasons,
         recentActivity: mergeDashboardActivity(deps, 18),
         engine: buildDashboardEngineSnapshot(),
         sportyBetApiHealth,

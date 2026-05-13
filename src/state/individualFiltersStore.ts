@@ -2,17 +2,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { IndividualFilterRule } from '../filters/individualFilterTypes.js';
+import type { BetDirectionFilter } from '../execution/types.js';
 
 const DEFAULT_PATH = path.join(process.cwd(), 'data', 'individual_filters.json');
 
 export interface IndividualFiltersFile {
   inplay: IndividualFilterRule[];
   prematch: IndividualFilterRule[];
+  /**
+   * For **total** and **team_total** scenarios only: allow both sides (default), over only, or under only.
+   * Other markets (spread, moneyline, etc.) are unaffected.
+   */
+  gameTotalsSide: BetDirectionFilter;
 }
 
-const empty: IndividualFiltersFile = { inplay: [], prematch: [] };
+/** Normalizes API / disk values for `gameTotalsSide`. */
+export function normalizeGameTotalsSide(v: unknown): BetDirectionFilter {
+  const s = String(v ?? 'both').trim().toLowerCase();
+  if (s === 'over' || s === 'under') return s;
+  return 'both';
+}
 
-let cache: IndividualFiltersFile = { ...empty, inplay: [], prematch: [] };
+const empty: IndividualFiltersFile = { inplay: [], prematch: [], gameTotalsSide: 'both' };
+
+let cache: IndividualFiltersFile = { ...empty, inplay: [], prematch: [], gameTotalsSide: 'both' };
 let lastMtimeMs = 0;
 
 function resolvePath(): string {
@@ -66,7 +79,7 @@ function readFromDisk(): IndividualFiltersFile {
   try {
     if (!fs.existsSync(file)) {
       lastMtimeMs = 0;
-      cache = { inplay: [], prematch: [] };
+      cache = { inplay: [], prematch: [], gameTotalsSide: 'both' };
       return cache;
     }
     const st = fs.statSync(file);
@@ -78,11 +91,12 @@ function readFromDisk(): IndividualFiltersFile {
     const prematch = Array.isArray(raw.prematch)
       ? raw.prematch.map((r, i) => normalizeRule(r, i))
       : [];
-    cache = { inplay, prematch };
+    const gameTotalsSide = normalizeGameTotalsSide(raw.gameTotalsSide);
+    cache = { inplay, prematch, gameTotalsSide };
     lastMtimeMs = st.mtimeMs;
     return cache;
   } catch {
-    cache = { inplay: [], prematch: [] };
+    cache = { inplay: [], prematch: [], gameTotalsSide: 'both' };
     lastMtimeMs = 0;
     return cache;
   }
@@ -102,6 +116,7 @@ export function saveIndividualFilters(next: IndividualFiltersFile): IndividualFi
   const normalized: IndividualFiltersFile = {
     inplay: next.inplay.map((r, i) => normalizeRule(r, r.order ?? i)),
     prematch: next.prematch.map((r, i) => normalizeRule(r, r.order ?? i)),
+    gameTotalsSide: normalizeGameTotalsSide(next.gameTotalsSide),
   };
   normalized.inplay.sort((a, b) => a.order - b.order);
   normalized.prematch.sort((a, b) => a.order - b.order);

@@ -6,6 +6,8 @@ type Tab = 'inplay' | 'prematch';
 type MarketKey = 'moneyline' | 'total' | 'spread' | 'team_total';
 type OutcomeKey = 'home' | 'away' | 'draw' | 'over' | 'under';
 
+type GameTotalsSidePref = 'both' | 'over' | 'under';
+
 interface IndividualRule {
   id: string;
   order: number;
@@ -60,6 +62,7 @@ export function FiltersPage() {
   const [prematch, setPrematch] = useState<IndividualRule[]>([]);
   const [status, setStatus] = useState('');
   const [saving, setSaving] = useState(false);
+  const [gameTotalsSide, setGameTotalsSide] = useState<GameTotalsSidePref>('both');
   const [modal, setModal] = useState<{ open: boolean; mode: Tab; rule: IndividualRule | null }>({
     open: false,
     mode: 'inplay',
@@ -88,11 +91,16 @@ export function FiltersPage() {
 
   const loadIndividual = useCallback(async () => {
     try {
-      const j = await fetchJson<{ inplay: IndividualRule[]; prematch: IndividualRule[] }>(
-        '/api/dashboard/individual-filters',
-      );
+      const j = await fetchJson<{
+        inplay: IndividualRule[];
+        prematch: IndividualRule[];
+        gameTotalsSide?: string;
+      }>('/api/dashboard/individual-filters');
       setInplay(Array.isArray(j.inplay) ? j.inplay : []);
       setPrematch(Array.isArray(j.prematch) ? j.prematch : []);
+      setGameTotalsSide(
+        j.gameTotalsSide === 'over' || j.gameTotalsSide === 'under' ? j.gameTotalsSide : 'both',
+      );
       setStatus('');
     } catch (e) {
       setStatus(String(e));
@@ -110,7 +118,11 @@ export function FiltersPage() {
       await fetchJson('/api/dashboard/individual-filters', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inplay: nextInplay, prematch: nextPrematch }),
+        body: JSON.stringify({
+          inplay: nextInplay,
+          prematch: nextPrematch,
+          gameTotalsSide,
+        }),
       });
       await loadIndividual();
       setStatus('Saved individual filters.');
@@ -217,6 +229,46 @@ export function FiltersPage() {
           (shown at the bottom). Per-account sports / scenarios / min EV remain on the{' '}
           <strong>Accounts</strong> page.
         </p>
+      </div>
+
+      <div className="max-w-3xl rounded-xl border border-sb-line bg-sb-panel p-4">
+        <h2 className="text-sm font-semibold text-slate-100">Totals markets — which side?</h2>
+        <p className="mt-1 text-xs text-sb-muted">
+          When set to <strong className="text-slate-300">Under only</strong> or{' '}
+          <strong className="text-slate-300">Over only</strong>, the engine drops the opposite side on{' '}
+          <strong className="text-slate-300">full game totals</strong> and{' '}
+          <strong className="text-slate-300">team totals</strong> only. Spreads, moneylines, and other
+          scenarios are unchanged. You can still narrow further with per-sport rules below. Stored as{' '}
+          <code className="text-violet-400">gameTotalsSide</code> in{' '}
+          <code className="text-violet-400">data/individual_filters.json</code>.
+        </p>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          {(
+            [
+              { v: 'both' as const, label: 'Both over & under' },
+              { v: 'over' as const, label: 'Over only' },
+              { v: 'under' as const, label: 'Under only' },
+            ] as const
+          ).map(({ v, label }) => (
+            <label key={v} className="flex cursor-pointer items-center gap-2 text-sm text-slate-200">
+              <input
+                type="radio"
+                name="gameTotalsSide"
+                checked={gameTotalsSide === v}
+                onChange={() => setGameTotalsSide(v)}
+              />
+              {label}
+            </label>
+          ))}
+          <button
+            type="button"
+            disabled={saving}
+            className="rounded-lg border border-violet-500/50 bg-violet-600/20 px-3 py-1.5 text-sm font-medium text-violet-200 hover:bg-violet-600/30 disabled:opacity-50 sm:ml-2"
+            onClick={() => void saveAll(inplay, prematch)}
+          >
+            {saving ? 'Saving…' : 'Save totals preference'}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 border-b border-sb-line pb-3">
