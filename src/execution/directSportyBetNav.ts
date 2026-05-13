@@ -16,6 +16,18 @@ import {
   sportyBetHomeUrl,
 } from '../config/executionEnv.js';
 
+function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function placeAttemptsFromEnv(): number {
+  const raw = process.env.EXECUTION_PLACE_ATTEMPTS?.trim();
+  if (!raw) return 3;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 3;
+  return Math.max(1, Math.min(6, Math.floor(n)));
+}
+
 export interface DirectNavOutcome {
   ok: boolean;
   skipReason?: 'match_not_found' | 'market_failed' | 'odds_drift_on_page' | 'nav_error';
@@ -32,6 +44,9 @@ export function resolveSportLinkLabel(sportRaw: string): string {
   }
   if (s.includes('foot') || s.includes('soccer')) {
     return process.env.EXECUTION_SPORT_LINK_FOOTBALL ?? 'Football';
+  }
+  if (s.includes('hockey') || s.includes('ice hockey')) {
+    return process.env.EXECUTION_SPORT_LINK_HOCKEY ?? 'Ice Hockey';
   }
   const t = sportRaw.trim();
   return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : 'Football';
@@ -277,36 +292,104 @@ export async function selectMarket(
 }
 
 /**
- * Fill stake field and confirm placement — tune selectors via env.
+ * Fill stake field and confirm placement — waits for visible controls, retries transient SPA misses.
+ * Tune selectors via env; set `EXECUTION_PLACE_ATTEMPTS` (1–6, default 3) for extra tries after failures.
  */
 export async function placeBet(
   page: Page,
   stake: number,
   budget: ExecutionBudget,
-): Promise<boolean> {
-  budget.assertWithin();
-  try {
-    const stakeSel =
-      process.env.EXECUTION_STAKE_INPUT ??
-      'input[name="stake"], input[placeholder*="Stake"], input[placeholder*="stake"], input[placeholder*="min"]';
-    const stakeEl = await page.$(stakeSel);
-    if (stakeEl) {
-      await stakeEl.fill(String(stake), { timeout: budget.remainingMs() });
-    }
-    budget.assertWithin();
+): Promise<{ ok: boolean; reason?: string }> {
+  const maxAttempts = placeAttemptsFromEnv();
+  const stakeSel =
+    process.env.EXECUTION_STAKE_INPUT ??
+    'input[name="stake"], input[placeholder*="Stake"], input[placeholder*="stake"], input[placeholder*="min"]';
+  const placeSel =
+    process.env.EXECUTION_PLACE_BET ??
+    'button:has-text("Place Bet"), button:has-text("Place"), button:has-text("Book"), [class*="place-bet"]';
+  const confirmSel = process.env.EXECUTION_PLACE_CONFIRM_SELECTOR?.trim();
+  const settleMs = executionEnv.placeBetSettleMs;
 
-    const placeSel =
-      process.env.EXECUTION_PLACE_BET ??
-      'button:has-text("Place Bet"), button:has-text("Book"), [class*="place-bet"]';
-    const btn = await page.$(placeSel);
-    if (btn) await btn.click({ timeout: budget.remainingMs() });
-    if (executionEnv.placeBetSettleMs > 0) {
-      await new Promise((r) => setTimeout(r, executionEnv.placeBetSettleMs));
-    }
-    return true;
-  } catch {
-    return false;
+  if (stake > 0 && stake < 50) {
+    logger.warn(
+      '[nav] placeBet stake below NGN 50 — many books reject; raise stake min/max in accounts.json if placements fail',
+      { stake },
+    );
   }
+
+  let lastReason = 'place_unknown';
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    budget.assertWithin();
+    try {
+      const stakeWait = Math.min(14_000, Math.max(3500, budget.remainingMs()));
+      const stakeLoc = page.locator(stakeSel).first();
+      await stakeLoc.waitFor({ state: 'visible', timeout: stakeWait }).catch(() => {});
+      if (!(await stakeLoc.isVisible().catch(() => false))) {
+        lastReason = 'stake_input_not_found';
+        logger.warn('[nav] placeBet stake input not visible', { attempt, maxAttempts, stakeSel });
+        if (attempt < maxAttempts) {
+          await delay(450 + attempt * 120);
+          continue;
+        }
+        return { ok: false, reason: lastReason };
+      }
+
+      await stakeLoc.scrollIntoViewIfNeeded().catch(() => {});
+      await stakeLoc.click({ timeout: Math.min(5000, budget.remainingMs()) }).catch(() => {});
+      await stakeLoc.fill(String(stake), { timeout: Math.min(12_000, budget.remainingMs()) });
+      budget.assertWithin();
+
+      const placeWait = Math.min(14_000, Math.max(3500, budget.remainingMs()));
+      const btnLoc = page.locator(placeSel).first();
+      await btnLoc.waitFor({ state: 'visible', timeout: placeWait }).catch(() => {});
+      if (!(await btnLoc.isVisible().catch(() => false))) {
+        lastReason = 'place_button_not_found';
+        logger.warn('[nav] placeBet place control not visible', { attempt, maxAttempts, placeSel });
+        if (attempt < maxAttempts) {
+          await delay(450 + attempt * 120);
+          continue;
+        }
+        return { ok: false, reason: lastReason };
+      }
+
+      await btnLoc.scrollIntoViewIfNeeded().catch(() => {});
+      await btnLoc.click({ timeout: Math.min(16_000, budget.remainingMs()) });
+      if (settleMs > 0) {
+        await delay(settleMs);
+      }
+
+      if (confirmSel) {
+        const okSeen = await page
+          .locator(confirmSel)
+          .first()
+          .isVisible({ timeout: 4000 })
+          .catch(() => false);
+        if (!okSeen) {
+          lastReason = 'place_confirm_not_seen';
+          logger.warn('[nav] placeBet post-click confirm selector not seen', { attempt, confirmSel });
+          if (attempt < maxAttempts) {
+            await delay(550);
+            continue;
+          }
+          return { ok: false, reason: lastReason };
+        }
+      }
+
+      return { ok: true };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      lastReason = msg.length > 0 && msg.length < 160 ? msg : 'place_exception';
+      logger.warn('[nav] placeBet attempt error', { attempt, maxAttempts, err: msg });
+      if (attempt < maxAttempts) {
+        await delay(400 + attempt * 150);
+        continue;
+      }
+      return { ok: false, reason: lastReason };
+    }
+  }
+
+  return { ok: false, reason: lastReason };
 }
 
 /** Orchestrates goToLiveListPage → findMatch → click → selectMarket. */

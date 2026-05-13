@@ -54,7 +54,7 @@ export class NavigationEngine {
     page: Page;
     stake: number;
     budget: ExecutionBudget;
-  }): Promise<boolean> {
+  }): Promise<{ ok: boolean; reason?: string }> {
     return placeBet(params.page, params.stake, params.budget);
   }
 }

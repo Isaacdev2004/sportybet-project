@@ -82,8 +82,8 @@ export const executionEnv = {
   pageGotoTimeoutMs: Math.max(5_000, num(process.env.EXECUTION_PAGE_GOTO_TIMEOUT_MS, 32_000)),
   /** After scroll-to-top on home, wait before re-checking sport link (ms). 0 = skip pause. */
   navScrollSettleMs: Math.max(0, num(process.env.EXECUTION_NAV_SCROLL_SETTLE_MS, 100)),
-  /** After Place click, short pause before returning (ms). 0 = skip. */
-  placeBetSettleMs: Math.max(0, num(process.env.EXECUTION_PLACE_BET_SETTLE_MS, 40)),
+  /** After Place click, short pause before returning (ms). 0 = skip. Default 120 — SportyBet UI often needs >40ms. */
+  placeBetSettleMs: Math.max(0, num(process.env.EXECUTION_PLACE_BET_SETTLE_MS, 120)),
   /**
    * After waiting in the per-account Playwright queue, skip if the signal is older than this (ms).
    * 0 = off. Prevents 10+ minute queue stalls from still opening the browser on stale drops.

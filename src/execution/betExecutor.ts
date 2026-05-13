@@ -286,7 +286,7 @@ async function executeBrowserForAccount(params: {
             finishedAtMs: ts,
           };
         }
-        const placed = await nav.fillStakeAndPlace({
+        const placeRes = await nav.fillStakeAndPlace({
           page: sessionPage,
           stake: unit.amount,
           budget,
@@ -295,8 +295,8 @@ async function executeBrowserForAccount(params: {
         return {
           accountId: account.id,
           stake: unit.amount,
-          status: placed ? ('success' as const) : ('failed' as const),
-          reason: placed ? undefined : 'place_returned_false',
+          status: placeRes.ok ? ('success' as const) : ('failed' as const),
+          reason: placeRes.ok ? undefined : (placeRes.reason ?? 'place_returned_false'),
           latencyMs: ts - st,
           finishedAtMs: ts,
         };
