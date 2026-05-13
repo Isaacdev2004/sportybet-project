@@ -56,8 +56,27 @@ async function waitForEnter(prompt: string): Promise<void> {
 async function main(): Promise<void> {
   const accounts = getAccounts();
   const id = process.env.EXECUTION_TEST_ACCOUNT_ID?.trim();
-  const account =
-    (id ? accounts.find((a) => a.id === id) : undefined) ?? accounts[0];
+  let account;
+  if (id) {
+    account = accounts.find((a) => a.id === id);
+    if (!account) {
+      const available = accounts.map((a) => a.id);
+      logger.error('[prove-login] EXECUTION_TEST_ACCOUNT_ID not found — refusing to fall back to another account', {
+        requested: id,
+        available,
+      });
+      process.exitCode = 1;
+      return;
+    }
+  } else {
+    account = accounts[0];
+    if (account && accounts.length > 1) {
+      logger.info('[prove-login] no EXECUTION_TEST_ACCOUNT_ID — using first account in file', {
+        accountId: account.id,
+        hint: 'Set EXECUTION_TEST_ACCOUNT_ID=id to pick a specific row',
+      });
+    }
+  }
   if (!account) {
     logger.error('[prove-login] no accounts found (check data/accounts.json or EXECUTION_ACCOUNTS_PATH)');
     process.exitCode = 1;
