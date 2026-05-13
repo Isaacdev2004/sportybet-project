@@ -4,6 +4,7 @@ import {
   passAccountExecutionFilters,
   passGlobalExecutionFilters,
 } from '../filters/filterEngine.js';
+import { passIndividualStrategyGate } from '../filters/individualStrategyFilters.js';
 import type {
   ExecutionAccount,
   ExecutionSettings,
@@ -29,6 +30,7 @@ import { fetchSportyBetLiveOddsForProbe } from './sportybetOddsProbe.js';
 import { logger } from '../utils/logger.js';
 import { appendExecutionLog } from '../state/executionLogStore.js';
 import { runAccountWorkerExclusive } from '../utils/serialQueue.js';
+import { getRuntimeSettings } from '../state/runtimeSettings.js';
 
 /** Round-robin assigns each opportunity to a worker slot so up to N runs overlap per account. */
 const accountWorkerRoundRobin = new Map<string, number>();
@@ -372,6 +374,27 @@ export async function executeBetsOnOpportunity(
     return result;
   }
 
+  const strat = passIndividualStrategyGate(opp);
+  if (!strat.ok) {
+    const finishedAtMs = Date.now();
+    const accountResults: SingleBetResult[] = [];
+    const result: BetExecutionResult = {
+      opportunityId: oppId,
+      parentId: opp.signal.parentId,
+      opportunity: opportunitySnapshot(opp),
+      startedAtMs,
+      finishedAtMs,
+      totalLatencyMs: finishedAtMs - startedAtMs,
+      ...buildDropTimingSnapshot(opp, startedAtMs, finishedAtMs, accountResults),
+      globalPass: false,
+      outcome: 'filtered_out',
+      skipReason: strat.reason ?? 'individual_strategy_no_match',
+      accountResults,
+    };
+    appendExecutionLog(result);
+    return result;
+  }
+
   const dedupKey = buildDedupKey({
     parentId: opp.signal.parentId,
     market: opp.signal.market,
@@ -379,7 +402,10 @@ export async function executeBetsOnOpportunity(
     line: opp.signal.line,
     designation: opp.signal.designation ?? opp.side,
   });
-  if (shouldSkipDuplicate(getDedupBackend(), dedupKey, settings.dedupTtlMs)) {
+  if (
+    !getRuntimeSettings().allowDuplicateBets &&
+    shouldSkipDuplicate(getDedupBackend(), dedupKey, settings.dedupTtlMs)
+  ) {
     const finishedAtMs = Date.now();
     const accountResults: SingleBetResult[] = [];
     const result: BetExecutionResult = {

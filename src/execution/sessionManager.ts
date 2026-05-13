@@ -14,6 +14,7 @@ import {
   saveStorageState,
   closeContext,
 } from './playwrightManager.js';
+import { appendActivityEvent } from '../state/activityEventStore.js';
 import { parseProxy } from '../account/proxyManager.js';
 import type { ExecutionBudget } from '../risk/riskManager.js';
 
@@ -25,6 +26,8 @@ const LOGIN = {
   password: process.env.EXECUTION_LOGIN_PASS_SELECTOR ?? '[name="password"], input[type="password"]',
   submit: process.env.EXECUTION_LOGIN_SUBMIT_SELECTOR ?? 'button[type="submit"]',
 };
+
+const lastSessionGotoActivity = new Map<string, number>();
 
 export async function ensureLoggedInSportyBet(params: {
   account: ExecutionAccount;
@@ -55,6 +58,13 @@ export async function ensureLoggedInSportyBet(params: {
       workerSlot,
       err: e1 instanceof Error ? e1.message : String(e1),
     });
+    appendActivityEvent({
+      source: 'session',
+      level: 'warn',
+      accountId: account.id,
+      headline: 'Session tab recycled',
+      detail: e1 instanceof Error ? e1.message : String(e1),
+    });
     await closeContext(account.id, workerSlot);
     const ctx2 = await getOrCreateContext({
       accountId: account.id,
@@ -79,6 +89,18 @@ export async function ensureLoggedInSportyBet(params: {
       waitUntil: 'domcontentloaded',
       timeout: executionEnv.pageGotoTimeoutMs,
     });
+    const now = Date.now();
+    const lastG = lastSessionGotoActivity.get(account.id) ?? 0;
+    if (now - lastG > 3 * 60_000) {
+      lastSessionGotoActivity.set(account.id, now);
+      appendActivityEvent({
+        source: 'session',
+        level: 'info',
+        accountId: account.id,
+        headline: 'Opened SportyBet',
+        detail: `goto home (${workerSlot ? `worker ${workerSlot}` : 'default'})`,
+      });
+    }
   } else {
     logger.debug('[session] skip home navigation — already on SportyBet (no reload)', {
       accountId: account.id,
@@ -104,6 +126,13 @@ export async function ensureLoggedInSportyBet(params: {
           accountId: account.id,
           err: e instanceof Error ? e.message : String(e),
         });
+        appendActivityEvent({
+          source: 'session',
+          level: 'warn',
+          accountId: account.id,
+          headline: 'Login flow failed',
+          detail: e instanceof Error ? e.message : String(e),
+        });
       }
       await saveStorageState(account.id, activeCtx);
     } else {
@@ -111,6 +140,13 @@ export async function ensureLoggedInSportyBet(params: {
         '[session] not logged in yet — skipped auto-fill so you can sign in manually in this tab',
         { accountId: account.id },
       );
+      appendActivityEvent({
+        source: 'session',
+        level: 'info',
+        accountId: account.id,
+        headline: 'Awaiting manual login',
+        detail: 'Not logged in — sign in in the Playwright tab (headed mode) or fix selectors.',
+      });
     }
   }
 

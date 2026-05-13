@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { buildDefaultExecutionSettings } from '../filters/filterEngine.js';
 import { executionEnv } from '../config/executionEnv.js';
 import { getEngineControlState } from '../state/engineRuntime.js';
+import { getRuntimeSettings } from '../state/runtimeSettings.js';
 import { getExecutionLogs } from '../state/executionLogStore.js';
 import { readLedgerNewest } from '../state/betLedgerStore.js';
 
@@ -40,7 +41,10 @@ export function getExecutionSettings(_req: Request, res: Response): void {
       sportyBetApiHeuristicExtract: executionEnv.sportyBetApiHeuristicExtract,
       sportyBetApiConfigured: executionEnv.sportyBetApiOddsPaths.length > 0,
     },
-    engine: getEngineControlState(),
+    engine: {
+      ...getEngineControlState(),
+      allowDuplicateBets: getRuntimeSettings().allowDuplicateBets,
+    },
   });
 }
 

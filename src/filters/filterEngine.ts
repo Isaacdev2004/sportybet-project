@@ -10,7 +10,7 @@ import { executionEnv } from '../config/executionEnv.js';
 import { signalDropPercent } from '../core/decisionEngine.js';
 import { sportPassesAllowlist } from '../config/filters.js';
 
-function scenarioFromSignal(signal: OddsDropSignal): ScenarioFilter {
+export function scenarioFromSignal(signal: OddsDropSignal): ScenarioFilter {
   const m = `${signal.market ?? ''} ${signal.sector ?? ''}`.toLowerCase();
   if (m.includes('team') && m.includes('total')) return 'team_total';
   if (m.includes('total')) return 'total';

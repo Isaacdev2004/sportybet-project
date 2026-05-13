@@ -315,7 +315,7 @@ export function AccountsPage() {
               />
             </label>
             <label className="block text-sm">
-              <span className="text-sb-muted">Starting balance (reference)</span>
+              <span className="text-sb-muted">Starting bankroll (₦ reference)</span>
               <input
                 type="number"
                 className="mt-1 w-full rounded-lg border border-sb-line bg-sb-bg px-3 py-2 text-sm"
@@ -324,6 +324,10 @@ export function AccountsPage() {
                   update(idx, { startingBalance: Number(e.target.value) || 0 })
                 }
               />
+              <span className="mt-1 block text-xs text-sb-muted">
+                Used on the dashboard to show total starting bankroll; profit % after settlement can use
+                this baseline once we wire balance sync.
+              </span>
             </label>
           </div>
 

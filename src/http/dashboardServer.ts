@@ -26,7 +26,12 @@ import {
   getDashboardStream,
   getDashboardControl,
   postDashboardControl,
+  getDashboardActivity,
 } from '../dashboard/dashboardController.js';
+import {
+  getIndividualFiltersHandler,
+  putIndividualFiltersHandler,
+} from '../dashboard/individualFiltersController.js';
 import { saveAccountsHandler } from '../dashboard/accountsSaveController.js';
 
 function timingSafeEqualStr(a: string, b: string): boolean {
@@ -133,9 +138,12 @@ export function createDashboardApp(params: {
 
   const dashDeps = { sse: params.sse, store: params.store, startedAtMs: params.startedAtMs };
   app.get('/api/dashboard/bootstrap', apiLimiter, getDashboardBootstrap(dashDeps));
+  app.get('/api/dashboard/activity', apiLimiter, getDashboardActivity(dashDeps));
   app.get('/api/dashboard/feed', apiLimiter, getDashboardFeed(dashDeps));
   app.get('/api/dashboard/control', apiLimiter, getDashboardControl());
   app.post('/api/dashboard/control', apiLimiter, postDashboardControl());
+  app.get('/api/dashboard/individual-filters', apiLimiter, getIndividualFiltersHandler);
+  app.put('/api/dashboard/individual-filters', apiLimiter, putIndividualFiltersHandler);
   app.get('/api/dashboard/stats', apiLimiter, getDashboardStats());
   app.get('/api/dashboard/bets', apiLimiter, getDashboardBets());
   app.get('/api/dashboard/filters', apiLimiter, getDashboardFiltersView());

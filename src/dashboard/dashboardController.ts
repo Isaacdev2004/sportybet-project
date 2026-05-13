@@ -1,11 +1,15 @@
 import type { Request, Response } from 'express';
 
 import { env } from '../config/env.js';
+import { executionEnv } from '../config/executionEnv.js';
 import { filters } from '../config/filters.js';
 import { signalDropPercent } from '../core/decisionEngine.js';
 import { getExecutionLogs } from '../state/executionLogStore.js';
 import { readLedgerNewest, readLedgerTailForDashboard } from '../state/betLedgerStore.js';
-import type { RecentStore } from '../state/recentStore.js';
+import type { RecentStore, PipelineSkipEntry } from '../state/recentStore.js';
+import { activityEventToDashboardRow, getActivityEvents } from '../state/activityEventStore.js';
+import { getSportyBetBalancesForAccounts } from '../services/sportybet/sportyBetBalanceProbe.js';
+import type { AccountBalanceSnapshot } from '../services/sportybet/sportyBetBalanceProbe.js';
 import type { PinnacleSseClient } from '../core/sseClient.js';
 import { getIngestSnapshot } from '../core/ingestStatus.js';
 import type { OddsDropSignal } from '../types/index.js';
@@ -20,6 +24,7 @@ import {
 } from './ledgerStats.js';
 import { getAccounts } from '../account/accountManager.js';
 import { getEngineControlState, setEnginePaused } from '../state/engineRuntime.js';
+import { getRuntimeSettings, updateRuntimeSettings } from '../state/runtimeSettings.js';
 import { getSportyBetApiHealthCached } from '../services/sportybet/api/sportybetApiHealth.js';
 
 export interface DashboardControllerDeps {
@@ -32,6 +37,15 @@ function parseStatsRange(raw: unknown): StatsRangeKey {
   const s = typeof raw === 'string' ? raw.toLowerCase() : '';
   if (s === 'today' || s === '7d' || s === '30d' || s === 'all') return s;
   return 'today';
+}
+
+export function buildDashboardEngineSnapshot(): ReturnType<typeof getEngineControlState> & {
+  allowDuplicateBets: boolean;
+} {
+  return {
+    ...getEngineControlState(),
+    allowDuplicateBets: getRuntimeSettings().allowDuplicateBets,
+  };
 }
 
 /** Merge in-memory execution ring with tail of ledger (dedupe by finishedAtMs + opportunityId). */
@@ -57,6 +71,126 @@ function mergedExecutionRows(max = 200): BetExecutionResult[] {
   return out.slice(0, max);
 }
 
+export interface DashboardActivityEntry {
+  kind: 'execution' | 'pipeline' | 'activity';
+  id?: string;
+  source?: string;
+  level?: string;
+  ts: number;
+  outcome: string;
+  skipReason?: string;
+  headline: string;
+  detail: string;
+  evPercent: number | null;
+  sport: string | null;
+  isLive: boolean | null;
+}
+
+function buildActivityLogEntries(max: number): DashboardActivityEntry[] {
+  const rows = mergedExecutionRows(Math.max(max, 80));
+  const out: DashboardActivityEntry[] = [];
+  let i = 0;
+  for (const r of rows.slice(0, max)) {
+    const o = r.opportunity;
+    const ev = o?.evPercent ?? null;
+    const sport = o?.sport ?? null;
+    const isLive = o?.isLive ?? null;
+    const skip = r.skipReason ? ` · ${r.skipReason}` : '';
+    const headline = `${r.outcome}${skip}`;
+    const parts: string[] = [];
+    if (o?.league) parts.push(o.league);
+    if (o?.home && o?.away) parts.push(`${o.home} vs ${o.away}`);
+    if (o?.market) parts.push(String(o.market));
+    if (ev != null && Number.isFinite(ev)) parts.push(`EV ${ev.toFixed(2)}%`);
+    const ar = r.accountResults;
+    const ok = ar.filter((x) => x.status === 'success').length;
+    const fail = ar.filter((x) => x.status === 'failed').length;
+    const skipc = ar.filter((x) => x.status === 'skipped').length;
+    let detail = parts.join(' · ');
+    if (ar.length)
+      detail += (detail ? ' · ' : '') + `accounts: ${ok} ok, ${fail} failed, ${skipc} skipped`;
+    out.push({
+      kind: 'execution',
+      id: `ex-${r.finishedAtMs}-${r.opportunityId}-${r.outcome}-${i++}`,
+      source: 'execution',
+      ts: r.finishedAtMs,
+      outcome: r.outcome,
+      skipReason: r.skipReason,
+      headline,
+      detail,
+      evPercent: ev,
+      sport,
+      isLive,
+    });
+  }
+  return out;
+}
+
+function buildPipelineSkipActivityEntries(
+  skips: PipelineSkipEntry[],
+  max: number,
+): DashboardActivityEntry[] {
+  return skips.slice(0, max).map((sk, idx) => ({
+    kind: 'pipeline' as const,
+    id: `pipe-${sk.ts}-${idx}-${sk.reason}`,
+    source: 'pipeline',
+    level: 'info',
+    ts: sk.ts,
+    outcome: 'pipeline_skip',
+    skipReason: sk.reason,
+    headline: `Skip · ${sk.reason}`,
+    detail: `${sk.reasonLabel} · ${sk.game}${sk.evPercent != null ? ` · EV ${sk.evPercent.toFixed(2)}%` : ''}`,
+    evPercent: sk.evPercent ?? null,
+    sport: sk.sport ?? null,
+    isLive: sk.isLive ?? null,
+  }));
+}
+
+function mergeDashboardActivity(deps: DashboardControllerDeps, limit: number): DashboardActivityEntry[] {
+  const cap = Math.min(400, Math.max(limit * 3, limit + 80));
+  const exec = buildActivityLogEntries(cap);
+  const pipe = buildPipelineSkipActivityEntries(
+    deps.store.dashboardSnapshot().pipelineSkips ?? [],
+    cap,
+  );
+  const evs = getActivityEvents(cap).map((e) => {
+    const r = activityEventToDashboardRow(e);
+    return {
+      kind: 'activity' as const,
+      id: r.id,
+      source: e.source,
+      level: r.level,
+      ts: r.ts,
+      outcome: r.outcome,
+      skipReason: r.skipReason,
+      headline: r.headline,
+      detail: r.detail,
+      evPercent: r.evPercent,
+      sport: r.sport,
+      isLive: r.isLive,
+    };
+  });
+  const seen = new Set<string>();
+  const merged: DashboardActivityEntry[] = [];
+  for (const row of [...exec, ...pipe, ...evs].sort((a, b) => b.ts - a.ts)) {
+    const id = row.id ?? `row-${row.ts}-${row.outcome}-${merged.length}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    merged.push(row);
+    if (merged.length >= limit) break;
+  }
+  return merged;
+}
+
+export function getDashboardActivity(deps: DashboardControllerDeps) {
+  return (req: Request, res: Response): void => {
+    const raw = req.query.limit;
+    const n = typeof raw === 'string' ? Number(raw) : NaN;
+    const limit = Number.isFinite(n) ? Math.min(400, Math.max(10, Math.floor(n))) : 150;
+    res.json({ entries: mergeDashboardActivity(deps, limit) });
+  };
+}
+
 export function getDashboardBootstrap(deps: DashboardControllerDeps) {
   return async (_req: Request, res: Response): Promise<void> => {
     try {
@@ -65,13 +199,70 @@ export function getDashboardBootstrap(deps: DashboardControllerDeps) {
       const snap = deps.store.dashboardSnapshot();
       const ledgerRows = readLedgerTailForDashboard(25_000);
       const daily = dailyTrackerFromRows(ledgerRows);
-      const { label: utcDay } = utcDayBounds();
-      const accounts = getAccounts().map((a) => {
+      const { label: utcDay, startMs, endMs } = utcDayBounds();
+      const todayLedgerRows = ledgerRows.filter(
+        (r) => r.finishedAtMs >= startMs && r.finishedAtMs < endMs,
+      );
+      const todayAgg = aggregateExecutionRows(todayLedgerRows, 'today');
+
+      const accountsRaw = getAccounts();
+      let totalStartingBankroll = 0;
+      for (const a of accountsRaw) {
+        if (a.enabled !== false && typeof a.startingBalance === 'number' && Number.isFinite(a.startingBalance)) {
+          totalStartingBankroll += a.startingBalance;
+        }
+      }
+      const primaryAccountId =
+        accountsRaw.find((a) => a.enabled !== false)?.id ?? accountsRaw[0]?.id ?? null;
+
+      let balances: Record<string, AccountBalanceSnapshot> = {};
+      if (executionEnv.sportyBetBalanceProbeEnabled) {
+        const ids = accountsRaw
+          .filter((a) => a.enabled !== false)
+          .map((a) => a.id)
+          .slice(0, 10);
+        try {
+          balances = await getSportyBetBalancesForAccounts(ids, 22_000);
+        } catch {
+          balances = {};
+        }
+      }
+
+      let totalLiveBankroll = 0;
+      let liveBankrollAccounts = 0;
+      let sumStartingForLiveAccounts = 0;
+      for (const a of accountsRaw) {
+        if (a.enabled === false) continue;
+        const b = balances[a.id];
+        if (b?.balance != null && Number.isFinite(b.balance)) {
+          totalLiveBankroll += b.balance;
+          liveBankrollAccounts++;
+          const sb =
+            typeof a.startingBalance === 'number' && Number.isFinite(a.startingBalance)
+              ? a.startingBalance
+              : 0;
+          sumStartingForLiveAccounts += sb;
+        }
+      }
+
+      const accounts = accountsRaw.map((a) => {
         const d = dailyAccountTotals(ledgerRows, a.id);
+        const b = balances[a.id];
+        const start = typeof a.startingBalance === 'number' ? a.startingBalance : 0;
+        let profitVsStartingPct: number | null = null;
+        if (start > 0 && b?.balance != null && Number.isFinite(b.balance)) {
+          profitVsStartingPct = Math.round(((b.balance - start) / start) * 1000) / 10;
+        }
         return {
           id: a.id,
           username: a.username,
           enabled: a.enabled !== false,
+          startingBalance: typeof a.startingBalance === 'number' ? a.startingBalance : 0,
+          liveBalance: b?.balance ?? null,
+          liveBalanceAtMs: b?.atMs,
+          liveBalanceSource: b?.source,
+          liveBalanceError: b?.error,
+          profitVsStartingPct,
           proxyActive: Boolean(a.proxy?.trim()),
           proxyMasked: a.proxy
             ? a.proxy.includes('@')
@@ -85,6 +276,14 @@ export function getDashboardBootstrap(deps: DashboardControllerDeps) {
           dailyUnitsPnl: d.unitsPnl,
         };
       });
+
+      let aggregateProfitVsStartingPct: number | null = null;
+      if (sumStartingForLiveAccounts > 0 && liveBankrollAccounts > 0) {
+        aggregateProfitVsStartingPct =
+          Math.round(
+            ((totalLiveBankroll - sumStartingForLiveAccounts) / sumStartingForLiveAccounts) * 1000,
+          ) / 10;
+      }
 
       const sportyBetApiHealth = await getSportyBetApiHealthCached();
 
@@ -103,7 +302,21 @@ export function getDashboardBootstrap(deps: DashboardControllerDeps) {
         utcDay,
         dailyTracker: daily,
         accounts,
-        engine: getEngineControlState(),
+        primaryAccountId,
+        totalStartingBankroll,
+        totalLiveBankroll: liveBankrollAccounts > 0 ? totalLiveBankroll : null,
+        liveBankrollAccountCount: liveBankrollAccounts,
+        aggregateProfitVsStartingPct,
+        todaySummary: {
+          accountAttempts: todayAgg.accountAttempts,
+          placedSuccess: todayAgg.placedSuccess,
+          placedFailed: todayAgg.placedFailed,
+          placedSkipped: todayAgg.placedSkipped,
+          totalStakedSuccess: todayAgg.totalStakedSuccess,
+          executionCycles: todayAgg.executionCycles,
+        },
+        recentActivity: mergeDashboardActivity(deps, 18),
+        engine: buildDashboardEngineSnapshot(),
         sportyBetApiHealth,
         note:
           'Daily tracker uses UTC midnight. Settlement (won/lost/units P/L) is not wired yet — columns show placeholders where applicable.',
@@ -415,19 +628,29 @@ export function getDashboardProxiesView() {
 
 export function getDashboardControl() {
   return (_req: Request, res: Response): void => {
-    res.json(getEngineControlState());
+    res.json(buildDashboardEngineSnapshot());
   };
 }
 
 export function postDashboardControl() {
   return (req: Request, res: Response): void => {
-    const paused = (req.body as { paused?: unknown })?.paused;
-    if (typeof paused !== 'boolean') {
-      res.status(400).json({ error: 'JSON body must include boolean "paused"' });
+    const body = req.body as { paused?: unknown; allowDuplicateBets?: unknown };
+    let changed = false;
+    if (typeof body.paused === 'boolean') {
+      setEnginePaused(body.paused);
+      changed = true;
+    }
+    if (typeof body.allowDuplicateBets === 'boolean') {
+      updateRuntimeSettings({ allowDuplicateBets: body.allowDuplicateBets });
+      changed = true;
+    }
+    if (!changed) {
+      res
+        .status(400)
+        .json({ error: 'JSON body must include boolean "paused" and/or "allowDuplicateBets"' });
       return;
     }
-    setEnginePaused(paused);
-    res.json(getEngineControlState());
+    res.json(buildDashboardEngineSnapshot());
   };
 }
 

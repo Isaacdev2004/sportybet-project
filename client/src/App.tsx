@@ -7,12 +7,14 @@ import { BetsPage } from './pages/BetsPage';
 import { StatsPage } from './pages/StatsPage';
 import { FiltersPage } from './pages/FiltersPage';
 import { ProxiesPage } from './pages/ProxiesPage';
+import { LogsPage } from './pages/LogsPage';
 
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
         <Route index element={<DashboardHome />} />
+        <Route path="logs" element={<LogsPage />} />
         <Route path="accounts" element={<AccountsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="bets" element={<BetsPage />} />

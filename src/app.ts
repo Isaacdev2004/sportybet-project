@@ -8,9 +8,11 @@ import { processOddsSignal } from './core/valuePipeline.js';
 import { RecentStore } from './state/recentStore.js';
 import { createDashboardApp, listenDashboard } from './http/dashboardServer.js';
 import { shutdownBrowser } from './execution/playwrightManager.js';
+import { loadRuntimeSettings } from './state/runtimeSettings.js';
 
 const startedAtMs = Date.now();
 const store = new RecentStore();
+loadRuntimeSettings();
 
 const missing = validateRequiredAtRuntime();
 if (missing.length) {

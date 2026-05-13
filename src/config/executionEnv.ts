@@ -182,6 +182,23 @@ export const executionEnv = {
    * pages often still need it). Set false for URLs that are already a full live list.
    */
   deepLinkTryLiveClick: process.env.EXECUTION_DEEP_LINK_TRY_LIVE_CLICK !== 'false',
+
+  /**
+   * Optional authenticated GET path for wallet/balance JSON (relative to SPORTYBET_API_BASE_URL or
+   * EXECUTION_SPORTYBET_BASE_URL). Example discovered in your capture: `/api/ng/...`
+   */
+  sportyBetBalancePath: (process.env.SPORTYBET_BALANCE_PATH ?? '').trim(),
+  /** Dot path into JSON for numeric balance, e.g. `data.balance` or `balance` */
+  sportyBetBalanceJsonPath: (process.env.SPORTYBET_BALANCE_JSON_PATH ?? '').trim(),
+  /** When no SPORTYBET_BALANCE_PATH, GET home HTML and regex-scan for balance (session cookies). */
+  sportyBetBalanceHtmlScrape: process.env.SPORTYBET_BALANCE_HTML_SCRAPE !== 'false',
+  /** Minimum ms between identical “balance OK” activity log lines per account (still updates dashboard). */
+  sportyBetBalanceActivityLogMs: Math.max(
+    15_000,
+    Math.min(600_000, num(process.env.SPORTYBET_BALANCE_ACTIVITY_LOG_MS, 120_000)),
+  ),
+  /** Set `SPORTYBET_DISABLE_BALANCE_PROBE=true` to skip live wallet HTTP on dashboard bootstrap. */
+  sportyBetBalanceProbeEnabled: process.env.SPORTYBET_DISABLE_BALANCE_PROBE !== 'true',
 };
 
 /**

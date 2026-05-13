@@ -4,6 +4,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 
 import { executionEnv, sportyBetHomeUrl } from '../config/executionEnv.js';
 import { logger } from '../utils/logger.js';
+import { appendActivityEvent } from '../state/activityEventStore.js';
 import { attachSportyBetApiCapture } from '../services/sportybet/api/pageCapture.js';
 import type { ProxySettings } from '../account/types.js';
 import { runSerial } from '../utils/serialQueue.js';
@@ -18,6 +19,7 @@ export function sessionKeyForWorker(accountId: string, workerSlot: number): stri
 const contextBySession = new Map<string, BrowserContext>();
 const sessionPageBySession = new Map<string, Page>();
 const keepaliveTimers = new Map<string, ReturnType<typeof setInterval>>();
+const lastKeepaliveActivityLog = new Map<string, number>();
 
 async function disposeSessionPage(sessionKey: string): Promise<void> {
   const p = sessionPageBySession.get(sessionKey);
@@ -88,13 +90,15 @@ function clearKeepalive(sessionKey: string): void {
 
 /**
  * Session keepalive without opening a tab — uses the context cookie jar (same as browser).
+ * Returns HTTP status from the home GET (for activity logging).
  */
-async function idlePingContext(ctx: BrowserContext): Promise<void> {
+async function idlePingContext(ctx: BrowserContext): Promise<{ status: number }> {
   const url = sportyBetHomeUrl();
-  await ctx.request.get(url, {
+  const res = await ctx.request.get(url, {
     timeout: 14_000,
     failOnStatusCode: false,
   });
+  return { status: res.status() };
 }
 
 function ensureContextKeepalive(sessionKey: string, ctx: BrowserContext): void {
@@ -108,12 +112,31 @@ function ensureContextKeepalive(sessionKey: string, ctx: BrowserContext): void {
       if (!cur || cur !== ctx) return;
       const br = cur.browser();
       if (!br?.isConnected()) return;
-      await idlePingContext(cur).catch((e: unknown) => {
-        logger.debug('[playwright] keepalive ping skipped', {
-          sessionKey,
-          err: e instanceof Error ? e.message : String(e),
+      try {
+        const { status } = await idlePingContext(cur);
+        const accountId = sessionKey.split('::')[0] ?? sessionKey;
+        const last = lastKeepaliveActivityLog.get(sessionKey) ?? 0;
+        const now = Date.now();
+        if (now - last > 4 * 60_000 || (status >= 400 && now - last > 120_000)) {
+          lastKeepaliveActivityLog.set(sessionKey, now);
+          appendActivityEvent({
+            source: 'playwright',
+            level: status >= 400 ? 'warn' : 'ok',
+            accountId,
+            headline: 'Session keepalive',
+            detail: `GET ${sportyBetHomeUrl()} · HTTP ${status}`,
+          });
+        }
+      } catch (e: unknown) {
+        const accountId = sessionKey.split('::')[0] ?? sessionKey;
+        appendActivityEvent({
+          source: 'playwright',
+          level: 'warn',
+          accountId,
+          headline: 'Session keepalive failed',
+          detail: e instanceof Error ? e.message : String(e),
         });
-      });
+      }
     })();
   }, ms);
   keepaliveTimers.set(sessionKey, id);
