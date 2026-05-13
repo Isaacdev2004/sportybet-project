@@ -12,6 +12,7 @@
  *   EXECUTION_PROVE_LOGIN_BUDGET_MS=120000
  *   EXECUTION_PROVE_LOGIN_PAUSE_SEC=30 — seconds before the window closes (default 30; not “forever”)
  *   EXECUTION_PROVE_LOGIN_WAIT_ENTER=true — keep browser open until you press Enter in this terminal (best for manual checks)
+ *   EXECUTION_PROVE_LOGIN_SCREENSHOT_TIMEOUT_MS=45000 — page.screenshot timeout (default 45s; SportyBet can exceed 10s on VPS)
  *
  * Tune the same EXECUTION_*_SELECTOR vars as production (see sessionManager.ts).
  */
@@ -103,12 +104,17 @@ async function main(): Promise<void> {
     const shotDir = path.join(process.cwd(), 'data', 'screenshots');
     fs.mkdirSync(shotDir, { recursive: true });
     const shotPath = path.join(shotDir, `prove-login-${account.id}.png`);
+    const shotTimeoutMs = Math.max(
+      5_000,
+      Math.min(120_000, num(process.env.EXECUTION_PROVE_LOGIN_SCREENSHOT_TIMEOUT_MS, 45_000)),
+    );
     try {
       await page.screenshot({
         path: shotPath,
         fullPage: false,
-        timeout: 10_000,
-        animations: 'disabled',
+        timeout: shotTimeoutMs,
+        /** `disabled` can wait on font/CSS pipeline; allow avoids extra work on slow VPS pages. */
+        animations: 'allow',
       });
       logger.info('[prove-login] screenshot saved', { screenshot: shotPath });
     } catch (e) {
