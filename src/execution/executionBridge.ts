@@ -5,6 +5,9 @@ import type { BetExecutionResult } from './types.js';
 import { executeBetsOnOpportunity } from './betExecutor.js';
 import { appendActivityEvent } from '../state/activityEventStore.js';
 
+/** Trial/permissive: one opportunity at a time so Playwright queue does not stampede stale_after_queue. */
+let permissiveExecutionChain: Promise<void> = Promise.resolve();
+
 /**
  * Fire-and-forget Phase 2 execution after Phase 1 alerting.
  * Disabled unless EXECUTION_ENABLED=true.
@@ -21,7 +24,8 @@ export function enqueueAutomatedExecution(opportunity: BettingOpportunity): void
     detail: `parent ${pid} · EV ${Number.isFinite(ev) ? ev.toFixed(2) : '?'}% · ${opportunity.signal.sport ?? 'sport ?'}`,
   });
 
-  void executeBetsOnOpportunity(opportunity)
+  const run = () =>
+    executeBetsOnOpportunity(opportunity)
     .then((r: BetExecutionResult) => {
       logger.info('[execution] completed', {
         opportunityId: r.opportunityId,
@@ -54,4 +58,11 @@ export function enqueueAutomatedExecution(opportunity: BettingOpportunity): void
         detail: e instanceof Error ? e.message : String(e),
       });
     });
+
+  if (executionEnv.permissiveMode) {
+    permissiveExecutionChain = permissiveExecutionChain.then(run, run);
+    return;
+  }
+
+  void run();
 }

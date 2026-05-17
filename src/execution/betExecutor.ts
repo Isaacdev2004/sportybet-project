@@ -523,7 +523,11 @@ export async function executeBetsOnOpportunity(
             }
             const signalAgeMs = mutexAcquiredMs - opp.signal.receivedAtMs;
             const maxSignalAgeMs = executionEnv.maxQueuedSignalAgeMs;
-            if (maxSignalAgeMs > 0 && signalAgeMs > maxSignalAgeMs) {
+            if (
+              !executionEnv.permissiveMode &&
+              maxSignalAgeMs > 0 &&
+              signalAgeMs > maxSignalAgeMs
+            ) {
               const ts = Date.now();
               logger.info('[execution] stale after queue — skip browser', {
                 oppId,
