@@ -173,6 +173,7 @@ async function preflightExecutionForAccount(params: {
   const softIsMock = /\bmock\b/i.test(opp.softBookLabel);
   const probeIsSignalOnly = probe?.source === 'signal_anchor';
   if (
+    !executionEnv.permissiveMode &&
     probe &&
     !softIsMock &&
     !probeIsSignalOnly &&
