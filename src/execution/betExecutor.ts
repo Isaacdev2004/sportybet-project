@@ -144,7 +144,9 @@ async function preflightExecutionForAccount(params: {
   const { opp, account, settings } = params;
   const t0 = Date.now();
 
-  const accFilter = passAccountExecutionFilters(account, opp);
+  const accFilter = passAccountExecutionFilters(account, opp, {
+    skipScenarioMinEvDirection: executionEnv.permissiveMode,
+  });
   if (!accFilter.ok) {
     const ts = Date.now();
     return {
@@ -356,6 +358,7 @@ export async function executeBetsOnOpportunity(
     return result;
   }
 
+  if (!executionEnv.permissiveMode) {
   const glob = passGlobalExecutionFilters(opp, settings.global);
   if (!glob.ok) {
     const finishedAtMs = Date.now();
@@ -375,7 +378,9 @@ export async function executeBetsOnOpportunity(
     appendExecutionLog(result);
     return result;
   }
+  }
 
+  if (!executionEnv.permissiveMode) {
   const totalsSide = getIndividualFilters().gameTotalsSide;
   const totalsGate = passGameTotalsSideFilter(opp, totalsSide);
   if (!totalsGate.ok) {
@@ -397,7 +402,9 @@ export async function executeBetsOnOpportunity(
     appendExecutionLog(result);
     return result;
   }
+  }
 
+  if (!executionEnv.permissiveMode) {
   const strat = passIndividualStrategyGate(opp);
   if (!strat.ok) {
     const finishedAtMs = Date.now();
@@ -418,6 +425,7 @@ export async function executeBetsOnOpportunity(
     appendExecutionLog(result);
     return result;
   }
+  }
 
   const dedupKey = buildDedupKey({
     parentId: opp.signal.parentId,
@@ -427,6 +435,7 @@ export async function executeBetsOnOpportunity(
     designation: opp.signal.designation ?? opp.side,
   });
   if (
+    !executionEnv.permissiveMode &&
     !getRuntimeSettings().allowDuplicateBets &&
     shouldSkipDuplicate(getDedupBackend(), dedupKey, settings.dedupTtlMs)
   ) {

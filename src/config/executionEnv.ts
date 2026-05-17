@@ -32,6 +32,13 @@ function parseOddsSource(raw: string | undefined): 'mock' | 'playwright' | 'api'
 export const executionEnv = {
   enabled: envBool(process.env.EXECUTION_ENABLED),
   /**
+   * When true, skip execution dedup, global EV/NVP/drop/scenario gates, individual strategy
+   * rules, game-totals side filter, and per-account scenario/minEv/direction gates. Sport
+   * allowlist on accounts still applies when non-empty. Use with FILTER_ALLOWED_SPORTS=basketball
+   * to trial raw placement volume.
+   */
+  permissiveMode: envBool(process.env.EXECUTION_PERMISSIVE),
+  /**
    * Wall-clock budget **after** acquiring the Playwright lock (nav + stake). Real SportyBet flows
    * often need 25–45s; default 45s. Lower only if you accept more `execution_time_exceeded` aborts.
    */

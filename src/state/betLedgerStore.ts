@@ -7,6 +7,13 @@ import { logger } from '../utils/logger.js';
 
 let writeTail = Promise.resolve();
 
+type LedgerCache = { mtimeMs: number; size: number; rows: BetExecutionResult[] };
+let ledgerCache: LedgerCache | null = null;
+
+function invalidateLedgerCache(): void {
+  ledgerCache = null;
+}
+
 function ensureLedgerDir(filePath: string): void {
   const dir = path.dirname(filePath);
   try {
@@ -36,6 +43,7 @@ export function persistExecutionLedger(entry: BetExecutionResult): void {
         err: e instanceof Error ? e.message : String(e),
       });
     });
+  invalidateLedgerCache();
 }
 
 /** Read newest-first lines (parses trailing portion of file; cap bytes for large logs). */
@@ -73,5 +81,18 @@ export function readLedgerTailForDashboard(
   maxReadBytes = 12_000_000,
 ): BetExecutionResult[] {
   const cap = Math.min(50_000, Math.max(1, Math.floor(limit)));
-  return readLedgerNewest(cap, maxReadBytes);
+  const filePath = executionEnv.ledgerPath;
+  if (!fs.existsSync(filePath)) return [];
+  const st = fs.statSync(filePath);
+  if (
+    ledgerCache &&
+    ledgerCache.mtimeMs === st.mtimeMs &&
+    ledgerCache.size === st.size &&
+    ledgerCache.rows.length >= cap
+  ) {
+    return ledgerCache.rows.slice(0, cap);
+  }
+  const rows = readLedgerNewest(cap, maxReadBytes);
+  ledgerCache = { mtimeMs: st.mtimeMs, size: st.size, rows };
+  return rows;
 }

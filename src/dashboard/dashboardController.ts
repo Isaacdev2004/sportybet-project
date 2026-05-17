@@ -16,7 +16,6 @@ import type { OddsDropSignal } from '../types/index.js';
 import type { BetExecutionResult } from '../execution/types.js';
 import {
   aggregateExecutionRows,
-  dailyAccountTotals,
   dailyTrackerFromRows,
   rangeToMs,
   todayAccountResultReasonBreakdown,
@@ -42,11 +41,18 @@ function parseStatsRange(raw: unknown): StatsRangeKey {
 
 export function buildDashboardEngineSnapshot(): ReturnType<typeof getEngineControlState> & {
   allowDuplicateBets: boolean;
+  executionPermissiveMode: boolean;
 } {
   return {
     ...getEngineControlState(),
     allowDuplicateBets: getRuntimeSettings().allowDuplicateBets,
+    executionPermissiveMode: executionEnv.permissiveMode,
   };
+}
+
+function isLiteBootstrapQuery(req: Request): boolean {
+  const raw = req.query.lite;
+  return raw === '1' || raw === 'true';
 }
 
 /** Merge in-memory execution ring with tail of ledger (dedupe by finishedAtMs + opportunityId). */
@@ -193,12 +199,24 @@ export function getDashboardActivity(deps: DashboardControllerDeps) {
 }
 
 export function getDashboardBootstrap(deps: DashboardControllerDeps) {
-  return async (_req: Request, res: Response): Promise<void> => {
+  return async (req: Request, res: Response): Promise<void> => {
     try {
       const poll = getIngestSnapshot();
       const sseOk = env.pinnacle.useDropsPoll ? false : deps.sse.connected;
-      const snap = deps.store.dashboardSnapshot();
-      const ledgerRows = readLedgerTailForDashboard(25_000);
+
+      if (isLiteBootstrapQuery(req)) {
+        const sportyBetApiHealth = await getSportyBetApiHealthCached();
+        res.json({
+          uptimeSec: Math.floor((Date.now() - deps.startedAtMs) / 1000),
+          sseConnected: sseOk,
+          ingest: poll,
+          engine: buildDashboardEngineSnapshot(),
+          sportyBetApiHealth,
+        });
+        return;
+      }
+
+      const ledgerRows = readLedgerTailForDashboard(8_000);
       const daily = dailyTrackerFromRows(ledgerRows);
       const { label: utcDay, startMs, endMs } = utcDayBounds();
       const todayLedgerRows = ledgerRows.filter(
@@ -247,8 +265,23 @@ export function getDashboardBootstrap(deps: DashboardControllerDeps) {
         }
       }
 
+      const accountDailyMap: Record<
+        string,
+        { placed: number; failed: number; skipped: number }
+      > = {};
+      for (const r of ledgerRows) {
+        if (r.finishedAtMs < startMs || r.finishedAtMs >= endMs) continue;
+        for (const ar of r.accountResults) {
+          const cur = accountDailyMap[ar.accountId] ?? { placed: 0, failed: 0, skipped: 0 };
+          if (ar.status === 'success') cur.placed++;
+          else if (ar.status === 'failed') cur.failed++;
+          else if (ar.status === 'skipped') cur.skipped++;
+          accountDailyMap[ar.accountId] = cur;
+        }
+      }
+
       const accounts = accountsRaw.map((a) => {
-        const d = dailyAccountTotals(ledgerRows, a.id);
+        const d = accountDailyMap[a.id] ?? { placed: 0, failed: 0, skipped: 0 };
         const b = balances[a.id];
         const start = typeof a.startingBalance === 'number' ? a.startingBalance : 0;
         let profitVsStartingPct: number | null = null;
@@ -275,7 +308,7 @@ export function getDashboardBootstrap(deps: DashboardControllerDeps) {
           betsPlacedToday: d.placed,
           betsFailedToday: d.failed,
           betsSkippedToday: d.skipped,
-          dailyUnitsPnl: d.unitsPnl,
+          dailyUnitsPnl: null,
         };
       });
 
@@ -323,7 +356,6 @@ export function getDashboardBootstrap(deps: DashboardControllerDeps) {
         sportyBetApiHealth,
         note:
           'Daily tracker uses UTC midnight. Settlement (won/lost/units P/L) is not wired yet — columns show placeholders where applicable.',
-        snapshot: snap,
       });
     } catch (e) {
       res.status(500).json({

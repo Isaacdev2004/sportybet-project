@@ -94,6 +94,7 @@ export function passGlobalExecutionFilters(
 export function passAccountExecutionFilters(
   account: ExecutionAccount,
   opp: BettingOpportunity,
+  opts?: { skipScenarioMinEvDirection?: boolean },
 ): { ok: boolean; reason?: string } {
   const f = account.filters;
   const sportKey = opp.signal.sport ?? opp.pinnacle.sport ?? '';
@@ -103,6 +104,9 @@ export function passAccountExecutionFilters(
     !sportPassesAllowlist(sportKey, new Set(f.allowedSports.map((s) => s.toLowerCase())), leagueKey)
   ) {
     return { ok: false, reason: 'account_sport_blocked' };
+  }
+  if (opts?.skipScenarioMinEvDirection) {
+    return { ok: true };
   }
   const scen = scenarioFromSignal(opp.signal);
   if (!f.scenarios.includes(scen)) {

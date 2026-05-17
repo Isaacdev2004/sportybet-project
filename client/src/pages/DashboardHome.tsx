@@ -158,7 +158,7 @@ export function DashboardHome() {
       }
     };
     load();
-    const id = setInterval(load, 8000);
+    const id = setInterval(load, 12_000);
     return () => {
       c = true;
       clearInterval(id);
@@ -167,6 +167,7 @@ export function DashboardHome() {
 
   useEffect(() => {
     let c = false;
+    let id: ReturnType<typeof setInterval> | undefined;
     const load = async () => {
       try {
         const { feed: f } = await fetchJson<{ feed: FeedRow[] }>('/api/dashboard/feed');
@@ -175,11 +176,22 @@ export function DashboardHome() {
         if (!c) setFeed([]);
       }
     };
-    load();
-    const id = setInterval(load, 3000);
+    const schedule = () => {
+      if (id) clearInterval(id);
+      const ms = document.visibilityState === 'hidden' ? 12_000 : 5_000;
+      id = setInterval(load, ms);
+    };
+    void load();
+    schedule();
+    const onVis = () => {
+      schedule();
+      void load();
+    };
+    document.addEventListener('visibilitychange', onVis);
     return () => {
       c = true;
-      clearInterval(id);
+      if (id) clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
     };
   }, []);
 

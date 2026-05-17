@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { executionEnv } from '../config/executionEnv.js';
+
 const DEFAULT_PATH = path.join(process.cwd(), 'data', 'runtime_settings.json');
 
 export interface RuntimeSettings {
@@ -19,7 +21,7 @@ export function loadRuntimeSettings(): void {
   const file = resolvePath();
   try {
     if (!fs.existsSync(file)) {
-      cache = { allowDuplicateBets: false };
+      cache = { allowDuplicateBets: executionEnv.permissiveMode };
       return;
     }
     const j = JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<RuntimeSettings>;

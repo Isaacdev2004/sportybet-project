@@ -10,6 +10,7 @@ interface BootstrapHeader {
     executionEnabledFromEnv: boolean;
     effectiveProcessing: boolean;
     allowDuplicateBets?: boolean;
+    executionPermissiveMode?: boolean;
   };
   sportyBetApiHealth?: {
     ok: boolean;
@@ -46,7 +47,7 @@ export function Layout() {
     let cancelled = false;
     const tick = async () => {
       try {
-        const b = await fetchJson<BootstrapHeader>('/api/dashboard/bootstrap');
+        const b = await fetchJson<BootstrapHeader>('/api/dashboard/bootstrap?lite=1');
         if (!cancelled) setHead(b);
       } catch {
         if (!cancelled) setHead(null);
@@ -204,6 +205,14 @@ export function Layout() {
                 }`}
               >
                 {paused ? 'Bot paused' : 'Bot running'}
+              </span>
+            ) : null}
+            {head?.engine?.executionPermissiveMode ? (
+              <span
+                title="EXECUTION_PERMISSIVE=true — dedup and execution filters bypassed"
+                className="rounded-full border border-violet-800 px-3 py-1 text-sm text-violet-200"
+              >
+                Trial mode
               </span>
             ) : null}
           </div>

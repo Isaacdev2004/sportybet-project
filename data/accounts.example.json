@@ -10,10 +10,10 @@
         { "min": 1000, "max": 2000 }
       ],
       "filters": {
-        "allowedSports": ["basketball", "tennis"],
-        "scenarios": ["total", "spread"],
+        "allowedSports": ["basketball"],
+        "scenarios": ["total", "spread", "moneyline", "team_total", "other"],
         "direction": "both",
-        "minEvPercent": 4
+        "minEvPercent": 0
       },
       "enabled": true
     }

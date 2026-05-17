@@ -26,7 +26,7 @@ export function BetsPage() {
 
   const load = useCallback(async () => {
     try {
-      const { rows: r } = await fetchJson<{ rows: BetRow[] }>('/api/dashboard/bets?limit=800');
+      const { rows: r } = await fetchJson<{ rows: BetRow[] }>('/api/dashboard/bets?limit=200');
       setRows(r);
     } catch {
       setRows([]);
@@ -40,7 +40,23 @@ export function BetsPage() {
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return rows;
-    return rows.filter((r) => JSON.stringify(r).toLowerCase().includes(s));
+    return rows.filter((r) => {
+      const hay = [
+        r.account,
+        r.sport,
+        r.league,
+        r.game,
+        r.market,
+        r.period,
+        r.selection,
+        r.placement,
+        r.result,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(s);
+    });
   }, [rows, q]);
 
   return (
